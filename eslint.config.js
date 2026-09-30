@@ -106,6 +106,26 @@ export default tseslint.config(
     rules: simulationIsolationRules,
   },
   {
+    files: ['src/game/sim/**/*.ts'],
+    rules: {
+      // M2 acceptance, restated (docs/plan-deviations.md A7): gameplay tuning lives in src/config,
+      // never in the systems. 0, 1 and 2 stay allowed as structural constants.
+      '@typescript-eslint/no-magic-numbers': [
+        'error',
+        {
+          ignore: [0, 1, 2],
+          ignoreArrayIndexes: true,
+          ignoreEnums: true,
+          ignoreNumericLiteralTypes: true,
+          ignoreReadonlyClassProperties: true,
+          ignoreTypeIndexes: true,
+          enforceConst: true,
+          detectObjects: true,
+        },
+      ],
+    },
+  },
+  {
     files: [
       'eslint.config.js',
       'vite.config.ts',

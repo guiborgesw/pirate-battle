@@ -24,15 +24,19 @@ pnpm dev                 # http://localhost:5173
 
 ## Commands
 
-| Command                                  | What it does                                                                 |
-| ---------------------------------------- | ---------------------------------------------------------------------------- |
-| `pnpm dev`                               | Vite dev server                                                              |
-| `pnpm build`                             | `tsc -b` + production bundle into `dist/`                                    |
-| `pnpm preview`                           | serves the production build (the mock service worker only works in a build)  |
-| `pnpm typecheck`                         | `tsc -b`, strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
-| `pnpm lint` / `pnpm lint:fix`            | ESLint (typescript-eslint strict, type-aware, simulation isolation rules)    |
-| `pnpm format` / `pnpm format:check`      | Prettier                                                                     |
-| `pnpm test:e2e` / `pnpm test:e2e:update` | Playwright suites and visual baselines (M14)                                 |
+| Command                                  | What it does                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                               | Vite dev server                                                                                   |
+| `pnpm build`                             | `tsc -b` + production bundle into `dist/`                                                         |
+| `pnpm preview`                           | serves the production build (the mock service worker only works in a build)                       |
+| `pnpm typecheck`                         | `tsc -b`, strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes`                      |
+| `pnpm verify`                            | the milestone gate: typecheck + lint + format check + self-check + production build               |
+| `pnpm lint` / `pnpm lint:fix`            | ESLint (typescript-eslint strict, type-aware, simulation isolation rules)                         |
+| `pnpm format` / `pnpm format:check`      | Prettier                                                                                          |
+| `pnpm test:e2e` / `pnpm test:e2e:update` | Playwright suites and visual baselines (M14)                                                      |
+| `pnpm self-check`                        | dependency-free assertions for pure logic: config snapshots, option validation, storage fallbacks |
+| `pnpm assets:inspect`                    | re-measures the shipped atlases/tilesheet (see `docs/assets-reference.md`)                        |
+| `pnpm assets:convert`                    | regenerates the spritesheet JSON for the ships atlas and the tile sheets                          |
 
 ## Environment variables
 
@@ -60,6 +64,16 @@ systems read the snapshot only. Balancing changes never touch system logic.
 | Pause                       | `P` / `Esc`          | pause button in the HUD          |
 
 Mobile is supported in **landscape**; portrait shows a "rotate your device" overlay.
+
+## Assets and loading
+
+Every texture and sound is loaded once, with a visible progress bar, before the battle can start:
+three spritesheets (ships, tiles, UI) plus 27 sound effects. Textures are mandatory — a blocked
+request shows an error naming the failed asset and a Retry button that retries without reloading
+the page. Sounds are best-effort: a missing sound is reported and the game falls back to silence.
+
+To reproduce a blocked texture deterministically (used by the E2E suite too), append
+`?assets=missing`: the first attempt fails, any retry succeeds.
 
 ## Ranking and Match History
 

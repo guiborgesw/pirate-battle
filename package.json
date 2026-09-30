@@ -14,11 +14,14 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -b",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm self-check && pnpm build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
-    "assets:inspect": "node --experimental-strip-types scripts/inspect-assets.ts"
+    "assets:inspect": "node --experimental-strip-types scripts/inspect-assets.ts",
+    "assets:convert": "node --experimental-strip-types scripts/convert-kenney-xml.ts",
+    "self-check": "node --experimental-strip-types scripts/self-check.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",

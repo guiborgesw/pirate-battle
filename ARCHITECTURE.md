@@ -66,7 +66,70 @@ render/input/UI/network/persistence layers, and must not touch `window`, `docume
 unseeded `Math.random`. All of that is enforced as lint **errors** in `eslint.config.js`, so
 `pnpm lint` fails on a violation instead of relying on review.
 
+## Configuration (M2)
+
+`src/config/gameConfig.ts` owns **every** gameplay number: arena size, match duration, spawn
+weights/limits/edge band, island geometry (circles), and the `maxHp`/`speed`/`turnSpeedRad`/`radius`
+plus weapon stats (`damage`, `cooldownMs`, `projectileSpeed`, `rangePx`, `lifeMs`,
+`projectileRadius`, broadside `spread`/`count`) of the player, the Chaser and the Shooter.
+
+- `createMatchConfig(options)` returns a **deep-frozen** snapshot. Systems receive that snapshot and
+  never read the module-level default, so changing options mid-session only affects the next match.
+- `configKey(config)` → `d<duration>-s<interval>` groups ranking entries per configuration;
+  `configLabel(config)` renders the human line shown above the ranking (see the mockups).
+- `src/config/optionsSchema.ts` holds the option bounds (60-180 s integer, 1000-10000 ms step 500),
+  defaults, `parseOptions` (validation with per-field messages), `clampOptionValue`,
+  `stepOptionValue` and `formatOptionValue` (milliseconds display as seconds, as in the mockups).
+- The simulation cannot smuggle tuning values in: `@typescript-eslint/no-magic-numbers` is an
+  error inside `src/game/sim/**` (see `docs/plan-deviations.md` A7).
+
+## Persistence (M2)
+
+`src/storage/localStore.ts` wraps `localStorage` with versioned keys, a schema-checked read and a
+try/catch on every access. `readJson` distinguishes `missing`, `corrupt` and `unavailable`, so a
+hand-edited value or a private-mode browser degrades to defaults instead of throwing.
+
+| Key                | Content                                       | Written by          |
+| ------------------ | --------------------------------------------- | ------------------- |
+| `pb.options.v1`    | last saved `GameOptions`                      | Options screen (M9) |
+| `pb.lastResult.v1` | last finished `MatchRecord`                   | Result screen (M9)  |
+| `pb.playerId.v1`   | local player uuid                             | M11                 |
+| `pb.pending.v1`    | `matchId → MatchRecord` awaiting registration | M12                 |
+| `pb.mockdb.v1`     | MSW in-memory database                        | M11                 |
+
+When `localStorage` is missing or throws, an in-memory backend keeps the app working for the
+session. `configureStorage(backend)` is the seam used by `scripts/self-check.ts`.
+
+## Assets (M3)
+
+- `scripts/convert-kenney-xml.ts` (`pnpm assets:convert`) turns `ships_miscellaneous_sheet.xml`
+  into Pixi spritesheet JSON and derives the tile frames (`tile_r<row>c<col>`) from the grid,
+  including a real 2x retina variant. The generated JSON is committed.
+- `src/game/assets/manifest.ts` is the only place that knows asset URLs: three atlases
+  (ships/tiles/ui) and 27 sounds. High-DPR screens get the retina sheets where they really are 2x
+  (tiles, UI) — never the ships sheet.
+- `src/game/assets/loadAssets.ts` loads every asset **once** and caches the promise. Textures come
+  through Pixi's `Assets`; sounds are fetched as `ArrayBuffer`s and decoded lazily by the audio
+  layer (M10). A failed attempt is never cached, so Retry performs a real second request.
+- Texture failure is fatal and rejects with `AssetLoadError`, whose `failures` array lists the
+  failed keys — the loading screen renders that list next to a Retry button. A failed **sound** is
+  best-effort: it is reported as a warning and the game still runs (silently).
+- `?assets=missing` (`src/game/assets/debugFlags.ts`) reproduces "a texture request is blocked":
+  the first attempt fails and any retry succeeds, which is exactly the DevTools scenario the
+  milestone asks for and the deterministic hook the Playwright suite will use (spec §8 item 2).
+- `src/config/tileMap.ts` names the tiles used by the game (water is `tile_r4c8`) and the island
+  blobs; every id was measured, not guessed (`pnpm assets:inspect tiles`).
+
+## Conventions
+
+- Relative imports carry explicit extensions (`./App.tsx`, `../../config/gameConfig.ts`). The
+  template already enables `allowImportingTsExtensions`, and it keeps every module runnable under
+  plain Node — which is what `scripts/` rely on.
+- `scripts/self-check.ts` (`pnpm self-check`) asserts pure logic (config freezing, option
+  validation, storage fallbacks) without a test framework; `scripts/inspect-assets.ts`
+  (`pnpm assets:inspect`) re-derives the asset measurements in `docs/assets-reference.md`.
+
 ## Pending sections
 
-Loop and interpolation, collisions, React/Pixi boundary, resource lifecycle, persistence keys, API
-contracts, cache strategy and pending-registration recovery are filled in as M4-M12 land.
+Loop and interpolation, collisions, the React/Pixi boundary, resource lifecycle, API contracts,
+cache strategy and pending-registration recovery are filled in as M4-M12 land.
