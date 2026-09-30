@@ -11,6 +11,8 @@ import {
   createMatchConfig,
   DEFAULT_GAME_CONFIG,
 } from '../src/config/gameConfig.ts'
+import { createClock } from '../src/game/core/Clock.ts'
+import { createFixedStepLoop } from '../src/game/core/FixedStepLoop.ts'
 import {
   clampOptionValue,
   DEFAULT_OPTIONS,
@@ -213,6 +215,167 @@ check(
   loadOptions().durationSec === DEFAULT_OPTIONS.durationSec,
 )
 resetStorageBackend()
+
+section('clock')
+const stepMs = 1000 / 60
+
+{
+  const clock = createClock({ stepMs, maxFrameMs: 250 })
+
+  const single = clock.advance(stepMs)
+  check('one 16.7 ms frame runs one step', single.steps === 1, String(single.steps))
+  check('alpha stays inside [0, 1)', single.alpha >= 0 && single.alpha < 1, String(single.alpha))
+
+  const throttled = clock.advance(100)
+  check('a 100 ms (throttled) frame runs six steps', throttled.steps === 6, String(throttled.steps))
+
+  const clamped = clock.advance(5000)
+  check(
+    'a 5 s frame is clamped to 250 ms / 15 steps',
+    clamped.clamped && clamped.steps === 15,
+    `${clamped.steps} steps, clamped=${String(clamped.clamped)}`,
+  )
+
+  check(
+    'sim time equals steps x stepMs',
+    Math.abs(clock.simTimeMs() - clock.stepCount() * stepMs) < 1e-9,
+  )
+
+  clock.clearAccumulator()
+  check('half a frame runs no step', clock.advance(stepMs / 2).steps === 0)
+  check('the second half completes the step', clock.advance(stepMs / 2).steps === 1)
+
+  clock.reset()
+  check('reset clears sim time and steps', clock.simTimeMs() === 0 && clock.stepCount() === 0)
+
+  // Regression guard: 1000/60 is not exact in binary floating point, so a naive floor() division
+  // drops a step at frame boundaries (60 frames would advance 999.99 ms instead of 1000 ms).
+  const drift = createClock({ stepMs, maxFrameMs: 250 })
+  for (let frame = 0; frame < 60; frame += 1) drift.advance(stepMs)
+  check(
+    '60 frames advance exactly one second of sim time',
+    Math.abs(drift.simTimeMs() - 1000) < 1e-9,
+    String(drift.simTimeMs()),
+  )
+  check(
+    'stepsFor is exact at the boundary',
+    drift.stepsFor(2000) === 120,
+    String(drift.stepsFor(2000)),
+  )
+}
+
+section('fixed-step loop')
+
+function runFrames(deltas: readonly number[]): {
+  steps: number
+  renders: number
+  lastAlpha: number
+} {
+  const clock = createClock({ stepMs, maxFrameMs: 250 })
+  let steps = 0
+  let renders = 0
+  let lastAlpha = -1
+  let frame: ((deltaMs: number) => void) | undefined
+
+  const loop = createFixedStepLoop({
+    clock,
+    onStep: () => {
+      steps += 1
+    },
+    onRender: (alpha) => {
+      renders += 1
+      lastAlpha = alpha
+    },
+    scheduler: {
+      start: (callback) => {
+        frame = callback
+      },
+      stop: () => {
+        frame = undefined
+      },
+    },
+  })
+
+  loop.start()
+  for (const delta of deltas) frame?.(delta)
+  loop.stop()
+
+  check('stopping the loop detaches the scheduler', frame === undefined)
+
+  return { steps, renders, lastAlpha }
+}
+
+const sixtySmallFrames = runFrames(Array.from({ length: 60 }, () => stepMs))
+const tenBigFrames = runFrames(Array.from({ length: 10 }, () => stepMs * 6))
+
+check('60 small frames run 60 steps', sixtySmallFrames.steps === 60, String(sixtySmallFrames.steps))
+check(
+  '10 big frames run the same 60 steps (frame rate does not change sim speed)',
+  tenBigFrames.steps === 60,
+  String(tenBigFrames.steps),
+)
+check(
+  'rendering happens once per frame',
+  sixtySmallFrames.renders === 60 && tenBigFrames.renders === 10,
+  `${sixtySmallFrames.renders}/${tenBigFrames.renders}`,
+)
+check(
+  'render alpha is the leftover fraction',
+  sixtySmallFrames.lastAlpha >= 0 && sixtySmallFrames.lastAlpha < 1,
+)
+
+{
+  const clock = createClock({ stepMs, maxFrameMs: 250 })
+  let steps = 0
+  const loop = createFixedStepLoop({
+    clock,
+    onStep: () => {
+      steps += 1
+    },
+    onRender: () => undefined,
+    scheduler: { start: () => undefined, stop: () => undefined },
+  })
+
+  let threw = false
+  try {
+    loop.advance(1000)
+  } catch {
+    threw = true
+  }
+  check('advance() refuses to run without manual mode', threw)
+
+  loop.setManual(true)
+  check('manual advance runs the exact number of steps', loop.advance(2000) === 120, String(steps))
+  check('manual advance ignores the frame clamp', loop.advance(stepMs) === 1)
+  check('manual mode reports itself', loop.isManual())
+}
+
+{
+  const clock = createClock({ stepMs, maxFrameMs: 250 })
+  let frames: ((deltaMs: number) => void) | undefined
+  let steps = 0
+
+  const loop = createFixedStepLoop({
+    clock,
+    onStep: () => {
+      steps += 1
+    },
+    onRender: () => undefined,
+    scheduler: {
+      start: (callback) => {
+        frames = callback
+      },
+      stop: () => undefined,
+    },
+  })
+
+  loop.start()
+  loop.ignoreNextFrame()
+  frames?.(5000)
+  check('the frame after a resume is dropped (no catch-up burst)', steps === 0, String(steps))
+  frames?.(stepMs)
+  check('the next frame runs normally', steps === 1, String(steps))
+}
 
 console.log(
   failures === 0 ? '\nSelf-check passed.' : `\nSelf-check failed with ${failures} problem(s).`,

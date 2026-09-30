@@ -9,15 +9,7 @@
 import { Assets, type Spritesheet } from 'pixi.js'
 
 import { assetsShouldFailOnce } from './debugFlags.ts'
-import {
-  atlasUrl,
-  ATLASES,
-  SOUND_KEYS,
-  soundUrl,
-  type AtlasEntry,
-  type AtlasKey,
-  type SoundKey,
-} from './manifest.ts'
+import { atlasUrl, SOUND_KEYS, soundUrl, type AtlasKey, type SoundKey } from './manifest.ts'
 
 export type AssetPhase = 'textures' | 'audio'
 
@@ -58,6 +50,11 @@ function describe(error: unknown): string {
 }
 
 function resolveDevicePixelRatio(): number {
+  // `?dpr=` is a debug hook (also used by the Playwright visual suite) that decides which
+  // spritesheet variant is loaded, so the retina path can be exercised on a 1x display.
+  const override = Number(new URLSearchParams(window.location.search).get('dpr'))
+  if (Number.isFinite(override) && override > 0) return override
+
   const ratio = window.devicePixelRatio
   return Number.isFinite(ratio) && ratio > 1 ? ratio : 1
 }
@@ -200,12 +197,7 @@ export function resetAssetsCache(): void {
   pending = undefined
 }
 
-/** Frames available in a sheet, used by the loading screen and the self-check. */
+/** Frames available in a sheet, used by the loading screen. */
 export function atlasFrameCount(sheet: Spritesheet): number {
   return Object.keys(sheet.textures).length
-}
-
-export function expectedFrames(key: AtlasKey): number {
-  const entry: AtlasEntry = ATLASES[key]
-  return entry.frames
 }

@@ -129,7 +129,61 @@ session. `configureStorage(backend)` is the seam used by `scripts/self-check.ts`
   validation, storage fallbacks) without a test framework; `scripts/inspect-assets.ts`
   (`pnpm assets:inspect`) re-derives the asset measurements in `docs/assets-reference.md`.
 
+## Loop and timing (M4)
+
+- `src/game/core/Clock.ts` converts frame deltas into fixed steps. `STEP_MS = 1000/60`,
+  `MAX_FRAME_MS = 250`: a single frame can never advance the simulation by more than 250 ms, so a
+  backgrounded tab or a debugger pause cannot produce a catch-up burst. The clock reads **no** wall
+  clock — the frame delta is injected — which is what makes the simulation testable and why
+  `performance.now()`/`Date.now()` are lint errors inside `src/game/core`.
+- **Floating-point tolerance.** `1000/60` is not exact in binary: `60 * stepMs` is
+  `1000.0000000000001`, so a naive `Math.floor(accumulator / stepMs)` silently drops a step at step
+  boundaries (60 frames advanced 999.99 ms instead of 1000 ms — about 0.8 % slow). `Clock.stepsFor()`
+  adds a `1e-9 ms` tolerance; `scripts/self-check.ts` guards it with a "60 frames = exactly one
+  second" regression test.
+- `src/game/core/FixedStepLoop.ts` runs N steps then renders **once** with the interpolation alpha
+  (`alpha = leftover / stepMs`). Feeding it 60 small frames and 10 large frames yields the same 60
+  steps — frame rate never changes simulation speed (asserted in the self-check, which is the
+  restated M5/§0 acceptance from `docs/plan-deviations.md` A8).
+- The frame source is injected (`LoopScheduler`): in the app it is Pixi's ticker, in tests it is
+  nothing at all and `window.__pb.advance(ms)` drives the loop. `ignoreNextFrame()` drops the first
+  delta after a resume so paused wall-clock time is never replayed.
+- Pausing is simply "stop calling advance": no steps, no clock movement, frozen cooldowns.
+
+## Renderer and lifecycle (M4)
+
+- `src/game/render/Renderer.ts` initialises Pixi with `resolution = devicePixelRatio` and
+  `autoDensity`, then letterboxes the fixed **1280x720 logical arena** inside the host element: one
+  `world` container holds the scale and offset, so touch mapping (M13) and future camera work stay
+  in logical units. A `ResizeObserver` on the host re-applies the layout on any size change.
+- The arena background is a single `TilingSprite` of the only water tile (`tile_r4c8`) instead of a
+  16x6 grid of sprites: one draw call, no seams.
+- **Retina:** `atlasUrl()` loads `tiles_sheet_retina.json` / `ui_sheet_retina.json` when
+  `devicePixelRatio > 1.5`. Pixi applies `meta.scale` (`Spritesheet` parses it), so a 128 px retina
+  frame renders at 64 logical pixels; measured, not assumed (see the diagnostics below).
+- `destroy()` uses the **two-argument** Pixi 8 signature
+  (`app.destroy({ removeView: true }, { children: true, texture: false, textureSource: false })`),
+  stops the ticker, disconnects the observer and removes every listener. Textures stay in Pixi's
+  cache, so re-entering a match does not re-download anything.
+- `src/game/GameSession.ts` owns renderer + clock + loop and publishes `HudSnapshot` objects that
+  React reads through `useSyncExternalStore`; a snapshot is only emitted when a visible field
+  changes, so the HUD never re-renders per frame.
+
+## Test hooks (M4)
+
+Available with `?testHooks=1` (or `MODE === 'test'`) as `window.__pb`:
+
+| Hook                               | Purpose                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getState()` / `getDiagnostics()`  | status, score, remaining time, HP, sim time, steps, frames, canvas count, HUD listeners, water texture geometry, renderer resolution, world scale |
+| `useManualClock()` + `advance(ms)` | runs the real systems in real fixed steps, deterministically                                                                                      |
+| `setSeed(n)`                       | seeds the simulation RNG (used from M5)                                                                                                           |
+| `stressEnterExit(n)`               | mounts/unmounts the arena `n` times and reports peak and post-exit canvas/session/listener counts                                                 |
+
+Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x display), `?assets=missing`
+(blocked texture, retryable), and later `?scenario=`/`?seed=`/`?perf=1` for the mock API and perf work.
+
 ## Pending sections
 
-Loop and interpolation, collisions, the React/Pixi boundary, resource lifecycle, API contracts,
-cache strategy and pending-registration recovery are filled in as M4-M12 land.
+Collisions, the React/Pixi input boundary, gameplay systems, API contracts, cache strategy and
+pending-registration recovery are filled in as M5-M12 land.

@@ -1,0 +1,80 @@
+.hud {
+  position: absolute;
+  inset: 0.75rem 0.75rem auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background: rgb(6 24 40 / 72%);
+  border: 2px solid rgb(255 226 160 / 35%);
+  border-radius: 0.6rem;
+  color: #fdf3dc;
+  font-weight: 700;
+}
+
+.icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  image-rendering: pixelated;
+}
+
+.value {
+  min-width: 2.5rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.hpTrack {
+  width: 7rem;
+  height: 0.85rem;
+  overflow: hidden;
+  background: rgb(0 0 0 / 45%);
+  border-radius: 0.4rem;
+}
+
+.hpFill {
+  height: 100%;
+  background: linear-gradient(180deg, #6fdd6f, #2f9c3f);
+  transition: width 120ms linear;
+}
+
+.exit {
+  pointer-events: auto;
+  min-height: 2.5rem;
+  padding: 0 1.1rem;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #3a2712;
+  cursor: pointer;
+  background: url('/assets/png/ui/menu/button_secondary_normal.png') center / 100% 100% no-repeat;
+}
+
+.exit:hover {
+  background-image: url('/assets/png/ui/menu/button_secondary_pressed.png');
+}
+
+.exit:focus-visible {
+  outline: 0.2rem solid #ffe8b0;
+  outline-offset: 0.2rem;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -5,7 +5,8 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1 (scaffold, toolchain, assets) is complete. Gameplay arrives with M4–M8; the
+> **Status:** M1–M4 are complete: scaffold and toolchain, typed config and storage, asset pipeline and
+> the Pixi host running a fixed-step loop on the water arena. Gameplay arrives with M5–M8; the
 > milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is
 > recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
@@ -52,6 +53,36 @@ systems read the snapshot only. Balancing changes never touch system logic.
 | ------------------------------------ | ----------------------- | ------- |
 | Game session time (`durationSec`)    | 60–180 s, integer       | 120 s   |
 | Enemy spawn time (`spawnIntervalMs`) | 1000–10000 ms, step 500 | 3000 ms |
+
+## Trying it locally
+
+```powershell
+pnpm install
+pnpm verify            # typecheck + lint + format + self-check + production build
+pnpm dev               # http://localhost:5173
+```
+
+Useful URLs while playing:
+
+| URL                      | What it does                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| `http://localhost:5173/` | menu → **Play** → arena (water, letterboxed 1280x720, HUD)                          |
+| `?testHooks=1`           | exposes `window.__pb` in the console                                                |
+| `?dpr=2`                 | forces the retina spritesheets on a 1x display                                      |
+| `?assets=missing`        | simulates a blocked texture: first load fails, **Retry** succeeds without reloading |
+
+In the console with `?testHooks=1`:
+
+```js
+__pb.getDiagnostics() // steps, frames, canvas count, listener count, water texture geometry
+__pb.useManualClock() // freeze the ticker and drive time yourself
+__pb.advance(2000) // runs 120 fixed steps (real systems)
+__pb.getState() // status, score, remaining time, HP
+__pb.stressEnterExit(10) // 10 mount/unmount cycles; then read __pb.lastStress()
+```
+
+`__pb.lastStress()` reports the peak canvas/session/listener counts while a match was mounted and the
+counts after leaving — that is the milestone's lifecycle check.
 
 ## Controls (target for M5/M13)
 
