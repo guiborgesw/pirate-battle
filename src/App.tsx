@@ -1,10 +1,26 @@
 import styles from './App.module.css'
+import { atlasFrameCount } from './game/assets/loadAssets.ts'
+import { LoadingScreen } from './ui/screens/LoadingScreen.tsx'
+import { useAssetLoading } from './ui/useAssetLoading.ts'
 
 /**
- * M1 placeholder screen. The real screen router (menu / options / log / game / result)
- * arrives in M9; it replaces this component.
+ * M1-M3 host: loads the challenge assets and reports what is available. The screen router
+ * (menu / options / log / game / result) replaces this in M9 and the Pixi canvas arrives in M4.
  */
 export default function App() {
+  const { state, retry } = useAssetLoading()
+
+  if (state.status === 'loading') {
+    return <LoadingScreen progress={state.progress} failures={undefined} onRetry={undefined} />
+  }
+
+  if (state.status === 'error') {
+    return <LoadingScreen progress={state.progress} failures={state.failures} onRetry={retry} />
+  }
+
+  const { atlases, sounds, warnings } = state.assets
+  const soundCount = Object.keys(sounds).length
+
   return (
     <main className={styles.shell}>
       <section className={styles.panel} aria-labelledby="placeholder-title">
@@ -12,13 +28,16 @@ export default function App() {
           Pirate Battle
         </h1>
         <p className={styles.subtitle}>
-          M1 scaffold: strict TypeScript, PixiJS 8, React 18, MSW-ready.
+          Assets ready — ships {atlasFrameCount(atlases.ships)} · tiles{' '}
+          {atlasFrameCount(atlases.tiles)} · ui {atlasFrameCount(atlases.ui)} · sounds {soundCount}
         </p>
         <button className={styles.primary} type="button" disabled>
           Play
         </button>
         <p className={styles.note}>
-          Gameplay arrives with M4–M8. Panels and buttons are drawn with the challenge UI sprites.
+          {warnings.length === 0
+            ? 'No asset warnings. Gameplay arrives with M4–M8.'
+            : `${warnings.length} sound warning(s) — the game still runs, sounds fall back to silence.`}
         </p>
       </section>
     </main>
