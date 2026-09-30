@@ -9,13 +9,19 @@ import type { Circle, GameConfig, IslandDefinition } from '../../config/gameConf
 import { createRng, type Rng } from '../core/Rng.ts'
 import type { ShipIntent } from '../core/intents.ts'
 import type { EnemyShip, PlayerShip, Projectile, Ship } from './entities.ts'
-import { islandCollisionSystem } from './systems/collision.ts'
+import { islandCollisionSystem, projectileIslandSystem } from './systems/collision.ts'
 import { applyArenaBounds, movementSystem } from './systems/movement.ts'
+import { projectilesSystem } from './systems/projectiles.ts'
+import { weaponsSystem } from './systems/weapons.ts'
 
 export type IslandCircle = Circle & {
   readonly islandId: string
   readonly variant: number
 }
+
+export type SimEvent =
+  | { readonly type: 'entityRemoved'; readonly entity: 'projectile'; readonly id: number }
+  | { readonly type: 'entityRemoved'; readonly entity: 'enemy'; readonly id: number }
 
 export type World = {
   readonly config: Readonly<GameConfig>
@@ -24,8 +30,16 @@ export type World = {
   readonly player: PlayerShip
   readonly enemies: EnemyShip[]
   readonly projectiles: Projectile[]
+  /**
+   * Entity removals produced by the current step. The renderer consumes them with `consumeEvents()`
+   * so pooled views are released exactly once; the array survives until then, which matters when one
+   * animation frame runs several fixed steps.
+   */
+  events: SimEvent[]
   simTimeMs: number
   nextEntityId: number
+  /** Total shots fired this match, win or lose — used by the cooldown checks and the HUD later. */
+  shotsFired: number
 }
 
 export type WorldOptions = {
@@ -72,8 +86,10 @@ export function createWorld(options: WorldOptions): World {
     player,
     enemies: [],
     projectiles: [],
+    events: [],
     simTimeMs: 0,
     nextEntityId: 2,
+    shotsFired: 0,
   }
 }
 
@@ -96,6 +112,42 @@ export function capturePreviousTransforms(world: World): void {
   }
 }
 
+type Removable = { readonly id: number; alive: boolean }
+
+/**
+ * Removes dead entities in place and reports each one. Compacting once, at the end of the step,
+ * means no system ever holds a stale array index, and the reported ids let the renderer release
+ * pooled views exactly once.
+ */
+function compactList(list: Removable[], entity: 'projectile' | 'enemy', events: SimEvent[]): void {
+  let write = 0
+
+  for (const item of list) {
+    if (!item.alive) {
+      events.push({ type: 'entityRemoved', entity, id: item.id })
+      continue
+    }
+
+    list[write] = item
+    write += 1
+  }
+
+  list.length = write
+}
+
+/** The single removal point of the step. */
+export function compact(world: World): void {
+  compactList(world.projectiles, 'projectile', world.events)
+  compactList(world.enemies, 'enemy', world.events)
+}
+
+/** Hands the accumulated events to the caller and starts a fresh batch. */
+export function consumeEvents(world: World): SimEvent[] {
+  const events = world.events
+  world.events = []
+  return events
+}
+
 /** Runs one fixed step of the simulation. */
 export function stepWorld(world: World, dtMs: number, intent: ShipIntent): void {
   capturePreviousTransforms(world)
@@ -105,5 +157,11 @@ export function stepWorld(world: World, dtMs: number, intent: ShipIntent): void 
   applyArenaBounds(world)
   islandCollisionSystem(world)
 
-  // M6: weapons + projectiles — M7: enemy AI + spawn + scoring — M8: match rules.
+  weaponsSystem(world, dtMs, intent)
+  projectilesSystem(world, dtMs)
+  projectileIslandSystem(world)
+
+  compact(world)
+
+  // M7: enemy AI + spawn + health/damage + scoring — M8: match rules.
 }

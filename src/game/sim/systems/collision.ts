@@ -3,7 +3,10 @@
  *
  * Ship vs island: the ship is pushed out along the surface normal and the inward part of its
  * velocity is removed (the tangential part survives, so a ship slides along a shore instead of
- * sticking to it). Projectile vs island/arena arrives with M6.
+ * sticking to it).
+ *
+ * Projectile vs island: the shot dies on contact and does not bounce — islands are terrain, not
+ * targets. The arena edge is handled in `projectiles.ts`, together with lifetime.
  */
 import type { Circle } from '../../../config/gameConfig.ts'
 import { distanceSquared } from '../../core/math.ts'
@@ -57,5 +60,26 @@ export function islandCollisionSystem(world: World): void {
   for (const ship of allShips(world)) {
     if (!ship.alive) continue
     resolveShipIslands(ship, world.islands)
+  }
+}
+
+/** Ends every shot that touches an island circle. */
+export function projectileIslandSystem(world: World): void {
+  if (world.islands.length === 0) return
+
+  for (const projectile of world.projectiles) {
+    if (!projectile.alive) continue
+
+    for (const circle of world.islands) {
+      const minimumDistance = circle.radius + projectile.radius
+
+      if (
+        distanceSquared(projectile.x, projectile.y, circle.x, circle.y) <
+        minimumDistance * minimumDistance
+      ) {
+        projectile.alive = false
+        break
+      }
+    }
   }
 }

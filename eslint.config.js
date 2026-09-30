@@ -113,7 +113,8 @@ export default tseslint.config(
       '@typescript-eslint/no-magic-numbers': [
         'error',
         {
-          ignore: [0, 1, 2],
+          // -1/0/1/2 are signs and identities rather than balance values.
+          ignore: [-1, 0, 1, 2],
           ignoreArrayIndexes: true,
           ignoreEnums: true,
           ignoreNumericLiteralTypes: true,

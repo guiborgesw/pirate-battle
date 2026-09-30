@@ -54,6 +54,12 @@ decisions taken while implementing M3: **sound loading is best-effort** (a faile
 the game keeps running instead of blocking the loading screen, as the brief implies for every key),
 and `?assets=missing` exists as a deterministic stand-in for "texture blocked in DevTools".
 
+One addition while implementing M6: `WeaponStats` gained **`muzzleOffsetPx`**. The brief's weapon
+stats had no muzzle offset, so shots would have appeared at the ship's centre while the `cannon`
+sprite sits 26 px forward — the ball would visibly leave the deck instead of the barrel. It is a
+tunable, so under the brief's own rule ("every tunable number lives here") it belongs in the config
+snapshot rather than in render code.
+
 ## D. Open questions for the author
 
 | #   | Question                                                                 | Default if unanswered      |

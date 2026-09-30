@@ -5,7 +5,12 @@
  * Installed when `import.meta.env.MODE === 'test'` or when the URL carries `?testHooks=1`
  * (which is how the production build is exercised), exposing `window.__pb`.
  */
-import type { EndReason, SessionDiagnostics, SessionStatus } from './GameSession.ts'
+import type {
+  EndReason,
+  ProjectileState,
+  SessionDiagnostics,
+  SessionStatus,
+} from './GameSession.ts'
 import { liveSessionCount } from './GameSession.ts'
 import { getCurrentSession } from './sessionRegistry.ts'
 
@@ -45,6 +50,10 @@ export type StressResult = {
 
 export type PbTestHooks = {
   getState(): PbState
+  /** Live shots with their velocity, so a test can assert the firing geometry. */
+  getProjectiles(): readonly ProjectileState[]
+  /** Shots fired since the match started, including the ones that already died. */
+  getShotsFired(): number
   setSeed(n: number): void
   useManualClock(): void
   advance(ms: number): number
@@ -78,6 +87,8 @@ function viewportDiagnostics(): SessionDiagnostics & {
     worldScale: 0,
     islands: 0,
     shipViews: 0,
+    projectiles: { created: 0, active: 0, pooled: 0 },
+    shotsFired: 0,
   }
 
   return {
@@ -133,9 +144,17 @@ export function createTestHooks(): PbTestHooks {
           hp: player?.hp ?? snapshot?.playerHp ?? 0,
         },
         enemies: [],
-        projectiles: 0,
+        projectiles: session?.getProjectileState().length ?? 0,
         endReason: snapshot?.endReason,
       }
+    },
+
+    getProjectiles(): readonly ProjectileState[] {
+      return getCurrentSession()?.getProjectileState() ?? []
+    },
+
+    getShotsFired(): number {
+      return getCurrentSession()?.getShotsFired() ?? 0
     },
 
     setSeed(n: number): void {

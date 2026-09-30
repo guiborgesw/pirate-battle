@@ -16,8 +16,24 @@ import { createClock } from '../src/game/core/Clock.ts'
 import { createFixedStepLoop } from '../src/game/core/FixedStepLoop.ts'
 import { createRng } from '../src/game/core/Rng.ts'
 import { EMPTY_INTENT, type ShipIntent } from '../src/game/core/intents.ts'
+import { headingToVector } from '../src/game/core/math.ts'
 import { createWorld, stepWorld, type World } from '../src/game/sim/World.ts'
-import { hullTierFor, shipAppearance } from '../src/config/shipAppearance.ts'
+import { consumeEvents } from '../src/game/sim/World.ts'
+import { effectiveRangePx } from '../src/game/sim/systems/weapons.ts'
+import {
+  ART_FACING_OFFSET_RAD,
+  BOW_CANNON_ROTATION_RAD,
+  hullTierFor,
+  shipAppearance,
+} from '../src/config/shipAppearance.ts'
+import {
+  columnHeights,
+  decodePng,
+  frameRect,
+  mean,
+  rowWidths,
+  type SheetJson,
+} from './lib/decode-png.ts'
 import { ATLASES, SOUND_KEYS, type AtlasKey } from '../src/game/assets/manifest.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -570,6 +586,288 @@ section('rng and ship appearance')
   )
 }
 
+section('weapons and projectiles')
+
+const fireFrontIntent: ShipIntent = { ...EMPTY_INTENT, fireFront: true }
+const firePortIntent: ShipIntent = { ...EMPTY_INTENT, fireLeft: true }
+const fireStarboardIntent: ShipIntent = { ...EMPTY_INTENT, fireRight: true }
+const bow = openWater.player.weapons.front
+const battery = openWater.player.weapons.side
+
+{
+  // Acceptance: holding fire respects the cooldown, mount by mount.
+  const world = createWorld({ config: openWater, seed: 1 })
+  const fireTimes: number[] = []
+  let previousShots = 0
+
+  for (let step = 0; step < 120; step += 1) {
+    stepWorld(world, stepMs, fireFrontIntent)
+    if (world.shotsFired > previousShots) {
+      previousShots = world.shotsFired
+      fireTimes.push(world.simTimeMs)
+    }
+  }
+
+  const gaps = fireTimes.slice(1).map((time, index) => time - (fireTimes[index] ?? 0))
+
+  check(
+    'holding fire never shoots faster than the cooldown',
+    gaps.length > 0 && gaps.every((gap) => gap >= bow.cooldownMs - 1e-9),
+    `${gaps.length} gaps, shortest ${Math.min(...gaps).toFixed(2)} ms vs cooldown ${bow.cooldownMs}`,
+  )
+  check(
+    'two seconds of held fire yields four to five bow shots',
+    world.shotsFired >= 4 && world.shotsFired <= 5,
+    `${world.shotsFired} shots`,
+  )
+}
+
+{
+  const world = createWorld({ config: openWater, seed: 1 })
+  const startX = world.player.x
+  const startY = world.player.y
+  stepWorld(world, stepMs, fireFrontIntent)
+
+  const shot = world.projectiles[0]
+  const speed = shot === undefined ? 0 : Math.hypot(shot.vx, shot.vy)
+
+  check(
+    'the bow fires one shot',
+    world.projectiles.length === 1,
+    `${world.projectiles.length} shots`,
+  )
+  check(
+    'the bow shot travels at the configured speed',
+    Math.abs(speed - bow.projectileSpeed) < 1e-9,
+    String(speed),
+  )
+  check(
+    'the bow shot leaves along the heading (straight up)',
+    shot?.vx === 0 && shot.vy === -bow.projectileSpeed,
+    JSON.stringify({ vx: shot?.vx, vy: shot?.vy }),
+  )
+  check(
+    // `prev*` is the spawn point: the shot already moved once inside the step that created it.
+    'the bow shot starts at the muzzle, not at the deck centre',
+    shot?.prevY === startY - bow.muzzleOffsetPx && shot.prevX === startX,
+    JSON.stringify({ x: shot?.prevX, y: shot?.prevY }),
+  )
+}
+
+{
+  const world = createWorld({ config: openWater, seed: 1 })
+  const startX = world.player.x
+  const startY = world.player.y
+  stepWorld(world, stepMs, firePortIntent)
+
+  const offsetsAlongHull = world.projectiles.map((shot) => shot.prevY - startY)
+  const speeds = world.projectiles.map((shot) => Math.hypot(shot.vx, shot.vy))
+
+  check(
+    'a broadside is a volley of three',
+    world.projectiles.length === battery.count,
+    `${world.projectiles.length} shots`,
+  )
+  check(
+    'broadside shots travel perpendicular to the heading',
+    world.projectiles.every(
+      (shot) => Math.abs(shot.vy) < 1e-9 && shot.vx === -battery.projectileSpeed,
+    ),
+    JSON.stringify(world.projectiles.map((shot) => ({ vx: shot.vx, vy: shot.vy }))),
+  )
+  check(
+    'the volley travels towards port when the port broadside fires',
+    world.projectiles.every((shot) => shot.prevX === startX - battery.muzzleOffsetPx),
+  )
+  check(
+    'the volley is spaced by spread along the hull',
+    Math.abs(Math.abs(offsetsAlongHull[1] ?? 0) - Math.abs(offsetsAlongHull[0] ?? 0)) ===
+      battery.spread,
+    JSON.stringify(offsetsAlongHull),
+  )
+  check(
+    'the volley is centred on the ship',
+    Math.abs(offsetsAlongHull.reduce((sum, offset) => sum + offset, 0)) < 1e-9,
+  )
+  check(
+    'every volley shot keeps the configured speed',
+    speeds.every((speed) => Math.abs(speed - battery.projectileSpeed) < 1e-9),
+  )
+}
+
+{
+  check(
+    'the effective range matches speed x lifetime',
+    Math.abs(effectiveRangePx(bow) - bow.rangePx) / bow.rangePx < 0.05,
+    `${effectiveRangePx(bow).toFixed(1)} px vs rangePx ${bow.rangePx}`,
+  )
+}
+
+{
+  // The starboard volley mirrors the port one: same size, same speed, opposite flank.
+  const portWorld = createWorld({ config: openWater, seed: 1 })
+  const starboardWorld = createWorld({ config: openWater, seed: 1 })
+  const shipX = portWorld.player.x
+
+  stepWorld(portWorld, stepMs, firePortIntent)
+  stepWorld(starboardWorld, stepMs, fireStarboardIntent)
+
+  check(
+    'the starboard volley mirrors the port volley',
+    starboardWorld.projectiles.length === portWorld.projectiles.length &&
+      starboardWorld.projectiles.every((shot) => shot.vx === battery.projectileSpeed) &&
+      starboardWorld.projectiles.every((shot) => shot.prevX === shipX + battery.muzzleOffsetPx),
+    JSON.stringify(starboardWorld.projectiles.map((shot) => ({ x: shot.prevX, vx: shot.vx }))),
+  )
+}
+
+{
+  // Acceptance: a shot dies once it has flown its range. Needs a lane longer than the range, so the
+  // ship fires along the main diagonal from a corner instead of from the middle of the arena.
+  const world = createWorld({ config: openWater, seed: 1 })
+  const diagonal = Math.PI / 4
+
+  world.player.x = 60
+  world.player.y = openWater.arena.height - 60
+  world.player.rotation = diagonal
+  stepWorld(world, stepMs, fireFrontIntent)
+
+  const shot = world.projectiles[0]
+  const forward = headingToVector(diagonal)
+  const start = { x: shot?.prevX ?? 0, y: shot?.prevY ?? 0 }
+  let furthest = 0
+  let steps = 0
+
+  while (world.projectiles.length > 0 && steps < 600) {
+    const alive = world.projectiles[0]
+    if (alive !== undefined) {
+      furthest = Math.max(
+        furthest,
+        (alive.x - start.x) * forward.x + (alive.y - start.y) * forward.y,
+      )
+    }
+    stepWorld(world, stepMs, EMPTY_INTENT)
+    steps += 1
+  }
+
+  check(
+    'a shot dies after travelling its effective range',
+    Math.abs(furthest - effectiveRangePx(bow)) < 20,
+    `${furthest.toFixed(1)} px vs ${effectiveRangePx(bow).toFixed(1)} px`,
+  )
+  check('the shot is removed from the world, not left behind', world.projectiles.length === 0)
+}
+
+{
+  // Acceptance: a shot vanishes on island contact.
+  const world = createWorld({ config: testConfig, seed: 1 })
+  const target = world.islands[0]
+  if (target === undefined) throw new Error('the default config ships no islands')
+
+  world.player.x = target.x
+  world.player.y = target.y + target.radius + 200
+  world.player.rotation = 0
+  stepWorld(world, stepMs, fireFrontIntent)
+
+  let closestToCentre = Number.POSITIVE_INFINITY
+  let lifeAtDeath = 0
+  let steps = 0
+
+  while (world.projectiles.length > 0 && steps < 600) {
+    const shot = world.projectiles[0]
+    if (shot !== undefined) {
+      closestToCentre = Math.min(closestToCentre, Math.hypot(shot.x - target.x, shot.y - target.y))
+      lifeAtDeath = shot.lifeMs
+    }
+    stepWorld(world, stepMs, EMPTY_INTENT)
+    steps += 1
+  }
+
+  const stepTravel = (bow.projectileSpeed * stepMs) / 1000
+
+  check(
+    'a shot never enters an island',
+    closestToCentre >= target.radius - stepTravel,
+    `closest approach ${closestToCentre.toFixed(1)} px vs island radius ${target.radius}`,
+  )
+  check(
+    'the island killed the shot, not the timer',
+    lifeAtDeath > 0,
+    `remaining lifetime at death: ${lifeAtDeath.toFixed(0)} ms`,
+  )
+}
+
+{
+  // Acceptance: a shot vanishes at the arena edge.
+  const world = createWorld({ config: openWater, seed: 1 })
+  world.player.y = 60
+  stepWorld(world, stepMs, fireFrontIntent)
+
+  let highest = world.player.y
+  let lifeAtDeath = 0
+  let steps = 0
+
+  while (world.projectiles.length > 0 && steps < 600) {
+    const shot = world.projectiles[0]
+    if (shot !== undefined) {
+      highest = Math.min(highest, shot.y)
+      lifeAtDeath = shot.lifeMs
+    }
+    stepWorld(world, stepMs, EMPTY_INTENT)
+    steps += 1
+  }
+
+  const stepTravel = (bow.projectileSpeed * stepMs) / 1000
+
+  check(
+    'a shot dies at the arena edge instead of flying off',
+    highest >= -stepTravel,
+    `furthest north ${highest.toFixed(1)} px`,
+  )
+  check(
+    'the edge killed the shot before its lifetime ran out',
+    lifeAtDeath > 0,
+    String(lifeAtDeath),
+  )
+}
+
+{
+  // Every removal is reported exactly once: the renderer pools sprites off these events.
+  const world = createWorld({ config: openWater, seed: 1 })
+  const everyWeaponIntent: ShipIntent = {
+    ...EMPTY_INTENT,
+    fireFront: true,
+    fireLeft: true,
+    fireRight: true,
+  }
+
+  let reported = 0
+  let peakAlive = 0
+
+  for (let step = 0; step < 300; step += 1) {
+    stepWorld(world, stepMs, everyWeaponIntent)
+    peakAlive = Math.max(peakAlive, world.projectiles.length)
+    reported += consumeEvents(world).length
+  }
+
+  check(
+    'every dead shot is reported exactly once',
+    reported === world.shotsFired - world.projectiles.length,
+    `${reported} events, ${world.shotsFired} fired, ${world.projectiles.length} alive`,
+  )
+  check(
+    // Bound: per mount, ceil(life / cooldown) volleys x shots per volley → 3 + 6 + 6 = 15.
+    'firing all three mounts for five seconds stays bounded',
+    peakAlive <= 15,
+    `peak ${peakAlive} live shots`,
+  )
+  check(
+    'the three mounts fire independently',
+    world.shotsFired > 5 * 4,
+    `${world.shotsFired} shots in 5 s`,
+  )
+}
+
 section('atlas manifest')
 
 {
@@ -614,6 +912,51 @@ section('atlas manifest')
     'every sound in the manifest exists on disk',
     missingSounds === 0,
     `${missingSounds} missing`,
+  )
+}
+
+section('ship art orientation')
+
+{
+  // The renderer compensates for the direction the pack draws ships in (see
+  // `src/config/shipAppearance.ts`). These assertions read the atlas pixels, so regenerating the
+  // sheets cannot silently invalidate those constants — the failure mode would be a ship that sails
+  // stern-first, which no type check can catch.
+  const sheetPath = join(process.cwd(), 'public/assets/spritesheet/ships_miscellaneous_sheet.json')
+  const sheet = JSON.parse(readFileSync(sheetPath, 'utf8')) as SheetJson
+  const png = decodePng(
+    join(process.cwd(), 'public/assets/spritesheet/ships_miscellaneous_sheet.png'),
+  )
+
+  const hullRows = rowWidths(png, frameRect(sheet, 'hull_large_1'))
+  const quarter = Math.floor(hullRows.length / 4)
+  const topBand = mean(hullRows.slice(0, quarter))
+  const bottomBand = mean(hullRows.slice(-quarter))
+
+  check(
+    'the hull sprite still tapers to its bow at the bottom of the frame',
+    bottomBand < topBand * 0.6,
+    `top band ${topBand.toFixed(1)} px wide vs bottom band ${bottomBand.toFixed(1)} px`,
+  )
+  check(
+    'the ship view therefore turns the hull a half turn',
+    ART_FACING_OFFSET_RAD === Math.PI,
+    `ART_FACING_OFFSET_RAD = ${ART_FACING_OFFSET_RAD}`,
+  )
+
+  const cannonColumns = columnHeights(png, frameRect(sheet, 'cannon'))
+  const breech = mean(cannonColumns.slice(0, 5))
+  const muzzle = mean(cannonColumns.slice(-5))
+
+  check(
+    'the cannon sprite still points its muzzle to the right (it narrows)',
+    muzzle < breech,
+    `breech columns ${breech.toFixed(1)} px vs muzzle columns ${muzzle.toFixed(1)} px`,
+  )
+  check(
+    'the bow gun is therefore turned a quarter turn to lie along the hull',
+    BOW_CANNON_ROTATION_RAD === Math.PI / 2,
+    `BOW_CANNON_ROTATION_RAD = ${BOW_CANNON_ROTATION_RAD}`,
   )
 }
 

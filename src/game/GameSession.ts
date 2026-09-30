@@ -24,9 +24,17 @@ import { createKeyboardInput, type KeyboardInput } from './input/KeyboardInput.t
 import { createRenderer, type Renderer } from './render/Renderer.ts'
 import { createArenaBackground } from './render/views/ArenaBackground.ts'
 import { createIslandView, type IslandView } from './render/views/IslandView.ts'
+import {
+  createProjectileViews,
+  type ProjectileViews,
+  type ProjectileViewStats,
+} from './render/views/ProjectileView.ts'
 import { createShipView, type ShipView } from './render/views/ShipView.ts'
 import type { Ship } from './sim/entities.ts'
-import { createWorld, stepWorld, type World } from './sim/World.ts'
+import { consumeEvents, createWorld, stepWorld, type World } from './sim/World.ts'
+
+/** Cannonball frame in the ships sheet (10x10, so a logical radius of 5). */
+export const CANNON_BALL_FRAME = 'cannon_ball'
 
 /** One simulation step: 60 Hz. */
 export const STEP_MS = 1000 / 60
@@ -52,6 +60,16 @@ export type PlayerState = {
   readonly hp: number
 }
 
+export type ProjectileState = {
+  readonly id: number
+  readonly owner: string
+  readonly x: number
+  readonly y: number
+  readonly vx: number
+  readonly vy: number
+  readonly lifeMs: number
+}
+
 export type SessionDiagnostics = {
   readonly status: SessionStatus
   readonly configKey: string
@@ -74,6 +92,8 @@ export type SessionDiagnostics = {
   readonly worldScale: number
   readonly islands: number
   readonly shipViews: number
+  readonly projectiles: ProjectileViewStats
+  readonly shotsFired: number
 }
 
 export type GameSessionOptions = {
@@ -127,6 +147,8 @@ export class GameSession {
   private readonly islandViews: IslandView[] = []
   private readonly shipViews = new Map<number, ShipView>()
   private readonly shipLayer = new Container()
+  private readonly projectileLayer = new Container()
+  private readonly projectileViews: ProjectileViews
 
   private status: SessionStatus = 'running'
   private pauseReason: PauseReason | undefined
@@ -160,6 +182,20 @@ export class GameSession {
     }
 
     renderer.world.addChild(this.shipLayer)
+
+    const cannonBall = options.assets.atlases.ships.textures[CANNON_BALL_FRAME]
+    if (cannonBall === undefined) {
+      renderer.destroy()
+      throw new Error(
+        `the ships atlas has no "${CANNON_BALL_FRAME}" frame — was assets:convert run?`,
+      )
+    }
+
+    renderer.world.addChild(this.projectileLayer)
+    this.projectileViews = createProjectileViews({
+      texture: cannonBall,
+      layer: this.projectileLayer,
+    })
 
     this.world = createWorld({ config: this.config, seed: options.seed })
     this.input = createInputState()
@@ -252,6 +288,8 @@ export class GameSession {
     for (const view of this.islandViews) view.destroy()
     this.islandViews.length = 0
 
+    this.projectileViews.destroy()
+    this.projectileLayer.destroy({ children: true })
     this.shipLayer.destroy({ children: true })
     this.background.destroy()
     this.renderer.destroy()
@@ -261,6 +299,24 @@ export class GameSession {
   getPlayerState(): PlayerState {
     const player = this.world.player
     return { x: player.x, y: player.y, rotation: player.rotation, hp: player.hp }
+  }
+
+  /** Live shots, for the browser test hooks and the cooldown checks. */
+  getProjectileState(): readonly ProjectileState[] {
+    return this.world.projectiles.map((projectile) => ({
+      id: projectile.id,
+      owner: projectile.owner,
+      x: projectile.x,
+      y: projectile.y,
+      vx: projectile.vx,
+      vy: projectile.vy,
+      lifeMs: projectile.lifeMs,
+    }))
+  }
+
+  /** Shots fired since the match started, counting the ones that already died. */
+  getShotsFired(): number {
+    return this.world.shotsFired
   }
 
   getDiagnostics(): SessionDiagnostics {
@@ -287,6 +343,8 @@ export class GameSession {
       worldScale: this.renderer.scaleFactor(),
       islands: this.islandViews.length,
       shipViews: this.shipViews.size,
+      projectiles: this.projectileViews.stats(),
+      shotsFired: this.world.shotsFired,
     }
   }
 
@@ -341,6 +399,19 @@ export class GameSession {
     for (const ship of [this.world.player, ...this.world.enemies]) {
       this.shipViews.get(ship.id)?.sync(ship, alpha)
     }
+
+    this.projectileViews.sync(this.world, alpha)
+
+    // Views are released from the simulation's own removal events, so a shot that died mid-step
+    // always frees its sprite — even when this one frame ran several fixed steps.
+    const events = consumeEvents(this.world)
+    if (events.length === 0) return
+
+    const removedProjectiles: number[] = []
+    for (const event of events) {
+      if (event.entity === 'projectile') removedProjectiles.push(event.id)
+    }
+    this.projectileViews.release(removedProjectiles)
   }
 
   private computeSnapshot(): HudSnapshot {

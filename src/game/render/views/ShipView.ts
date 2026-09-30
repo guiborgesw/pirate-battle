@@ -8,7 +8,11 @@
  */
 import { Container, Sprite, type Spritesheet } from 'pixi.js'
 
-import { shipAppearance } from '../../../config/shipAppearance.ts'
+import {
+  ART_FACING_OFFSET_RAD,
+  BOW_CANNON_ROTATION_RAD,
+  shipAppearance,
+} from '../../../config/shipAppearance.ts'
 import { lerp, lerpAngle } from '../../core/math.ts'
 import type { Ship } from '../../sim/entities.ts'
 import { textureOrThrow } from '../textures.ts'
@@ -54,6 +58,9 @@ export function createShipView(options: { parts: Spritesheet; ship: Ship }): Shi
   const cannon = new Sprite({ texture: textureOrThrow(options.parts, CANNON_FRAME) })
   cannon.anchor.set(0.5, 0.5)
   cannon.position.set(PART_OFFSETS.cannon.x, PART_OFFSETS.cannon.y)
+  // The sprite is drawn side-on: its muzzle is the tapering end on the right. The rotation constant
+  // (asserted against the pixels in the self-check) points the barrel along the hull axis.
+  cannon.rotation = BOW_CANNON_ROTATION_RAD
 
   container.addChild(hull, pole, sail, flag, cannon)
 
@@ -78,7 +85,8 @@ export function createShipView(options: { parts: Spritesheet; ship: Ship }): Shi
       applyAppearance(ship)
       container.x = lerp(ship.prevX, ship.x, alpha)
       container.y = lerp(ship.prevY, ship.y, alpha)
-      container.rotation = lerpAngle(ship.prevRotation, ship.rotation, alpha)
+      container.rotation =
+        lerpAngle(ship.prevRotation, ship.rotation, alpha) + ART_FACING_OFFSET_RAD
     },
 
     destroy(): void {

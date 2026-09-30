@@ -70,6 +70,22 @@ drawn as overlapping copies of the verified blob — one per collision circle �
 (indices 22, 23 / 38, 39) and a deterministic scatter of rocks (48, 49, 64, 65) and foliage
 (69, 70, 71). The visual shape is therefore the same shape ships and projectiles collide with.
 
+## Ship art orientation
+
+The pack draws ships **bow-down**. `hull_large_1` (50x108) is 49 px wide across its top rows and
+tapers to a 9.9 px point at the bottom of its frame, and the challenge mockups fire from that pointed
+end — so the sprite's forward direction is screen +Y. The simulation's heading 0 points up (screen
+−Y), which is why `ART_FACING_OFFSET_RAD` (a half turn) exists in `src/config/shipAppearance.ts`.
+Without it the ship sails stern-first, which is exactly the bug the first play test reported.
+
+The bow gun is the same story from the side: the `cannon` sprite is drawn side-on and its muzzle is
+the tapering end on the right (columns 24–28 narrow from 12 px to 9 px), so a quarter turn
+(`BOW_CANNON_ROTATION_RAD`) lays the barrel along the hull instead of across it.
+
+Both constants are asserted against the atlas pixels in `pnpm self-check`
+(`scripts/lib/decode-png.ts` decodes the sheet in Node), so regenerating the assets cannot silently
+invalidate them.
+
 ## UI and HUD
 
 `png/ui/hud/`: `health_frame`, `health_fill_green|amber|red`, `icon_heart`, `counter_panel`,

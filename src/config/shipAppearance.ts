@@ -8,6 +8,24 @@
  */
 import type { ShipKind } from '../game/sim/entities.ts'
 
+/**
+ * The asset pack draws ships bow-**down**. Measured, not eyeballed: `hull_large_1` (50x108) is 49 px
+ * wide across its top rows and tapers to a 9.9 px point at the bottom of its frame, and the challenge
+ * mockups fire from that pointed end. The simulation's heading 0 points up (screen -Y), so every ship
+ * view must add this half turn — otherwise the ship sails stern-first.
+ *
+ * Asserted against the pixels in `pnpm self-check`, so a regenerated atlas cannot silently invalidate
+ * it.
+ */
+export const ART_FACING_OFFSET_RAD = Math.PI
+
+/**
+ * A quarter turn clockwise for the bow gun. Its sprite is drawn side-on with the muzzle — the
+ * tapering end — on the right (columns 24-28 narrow from 12 px to 9 px). The quarter turn points the
+ * barrel along the hull axis instead of across it.
+ */
+export const BOW_CANNON_ROTATION_RAD = Math.PI / 2
+
 export type HullTier = 1 | 2 | 3 | 4
 
 export type ShipAppearance = {

@@ -213,7 +213,38 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   colours are available; `src/config/shipAppearance.ts` maps health ratio to the ladder
   (intact → chipped ≤ 66 % → badly damaged ≤ 33 % → grey wreck).
 
+## Weapons and projectiles (M6)
+
+- Three mounts with **independent cooldowns**: the bow fires one shot along the heading, each
+  broadside fires `count` parallel shots **perpendicular** to the heading, spaced `spread` apart
+  _along the hull_ and mirrored between port and starboard. Holding every fire key never couples the
+  mounts — each may only fire when its own cooldown has run out (asserted: every gap between shots is
+  at least `cooldownMs`).
+- Shots appear at `muzzleOffsetPx` from the ship centre, which matches the `cannon` sprite offset, so
+  a ball leaves the barrel instead of the deck centre. That tunable was added to `WeaponStats` (see
+  `docs/plan-deviations.md`).
+- A shot's life ends three ways: its **lifetime** (`lifeMs`), **leaving the arena**, or **touching an
+  island circle**. Islands are terrain, not targets — the shot dies on contact and does not bounce.
+  Damage application arrives with the health system in M7, which is where the brief's own milestone
+  split puts it.
+- Effective reach is `projectileSpeed x lifeMs`, asserted to stay within 5 % of the configured
+  `rangePx` so the two numbers cannot drift apart unnoticed.
+- **Removal**: a dying entity only sets `alive = false`; one `compact()` at the end of the step
+  removes dead entities in place and pushes an `entityRemoved` event per removal. The renderer
+  releases pooled sprites from those events — never by diffing the world — so a frame that runs
+  several fixed steps still frees every sprite exactly once. Asserted: removals reported == shots
+  fired − shots alive.
+
+* **Projectile rendering** uses a single sprite pool (`render/pools.ts`). Sprites are created on
+  demand, stay children of their layer and only toggle `visible`, so a busy fight never adds or
+  removes children mid-frame; the diagnostics report `created` / `active` / `pooled`.
+* **Ship art orientation**: the pack draws ships bow-down, so every ship view adds a half turn
+  (`ART_FACING_OFFSET_RAD`) — and the side-on bow gun a quarter turn — to make the hull point where
+  the simulation says it is going. Both constants are asserted against the atlas pixels in
+  `pnpm self-check`, because this failure mode (sailing stern-first) is invisible to typecheck, lint
+  and the headless checks: it only shows up on screen. Details in `docs/assets-reference.md`.
+
 ## Pending sections
 
-Weapons and projectiles (M6), enemy AI and spawns (M7), match rules (M8), the API layer (M11) and the
-mock scenarios (M12) are filled in as those milestones land.
+Enemy AI, spawns, the health/damage system and scoring (M7), match rules and pause (M8), the API
+layer (M11) and the mock scenarios (M12) are filled in as those milestones land.

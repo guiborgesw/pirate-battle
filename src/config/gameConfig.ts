@@ -24,6 +24,11 @@ export type WeaponStats = {
   readonly rangePx: number
   readonly lifeMs: number
   readonly projectileRadius: number
+  /**
+   * How far from the ship centre the shot appears, along its firing direction. Matches the
+   * `cannon` sprite offset so the ball leaves the barrel instead of the deck centre.
+   */
+  readonly muzzleOffsetPx: number
 }
 
 export type SideWeaponStats = WeaponStats & {
@@ -123,6 +128,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
         rangePx: 640,
         lifeMs: 1150,
         projectileRadius: 5,
+        muzzleOffsetPx: 30,
       },
       side: {
         damage: 22,
@@ -131,6 +137,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
         rangePx: 470,
         lifeMs: 1000,
         projectileRadius: 5,
+        muzzleOffsetPx: 28,
         spread: 26,
         count: 3,
       },
@@ -155,6 +162,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
       rangePx: 560,
       lifeMs: 1450,
       projectileRadius: 5,
+      muzzleOffsetPx: 26,
     },
     attackRange: 470,
     preferredRange: 330,
