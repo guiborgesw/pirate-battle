@@ -7,7 +7,11 @@
  * are, the ships sheet is not (see docs/assets-reference.md).
  */
 
-const ASSET_BASE = `${import.meta.env.BASE_URL}assets/`
+/**
+ * Asset URLs. `import.meta.env` is read defensively so this module also loads under plain Node —
+ * `scripts/self-check.ts` imports it to assert that the committed atlases match this manifest.
+ */
+const ASSET_BASE = `${(import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'}assets/`
 
 export type AtlasKey = 'ships' | 'tiles' | 'ui'
 

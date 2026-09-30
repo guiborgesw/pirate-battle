@@ -4,6 +4,12 @@
  * Measured, not guessed: every entry below was derived by decoding the sheet and classifying each
  * 64px tile by its mean colour and alpha coverage (`pnpm assets:inspect tiles`), then confirmed
  * against the shipped mockups. The 0-based grid index of a tile is `row * 16 + column`.
+ *
+ * The sheet contains exactly **one** complete rounded sand blob: columns 0-2 of rows 0-2, whose
+ * corner tiles measure 80-81 % alpha coverage and whose centre measures 100 %. Every other beige
+ * region is plain sand with straight edges (100 % coverage) — using those produced rectangular
+ * islands. All islands therefore reuse the verified blob and differ by grass patch, rock/foliage
+ * scatter and collision circles.
  */
 import type { Circle } from './gameConfig.ts'
 
@@ -23,64 +29,40 @@ export const FORTRESS_TILES = {
 } as const satisfies Record<string, TileId>
 
 export type TileBlob = {
-  /** Beach/sand body drawn under the island. */
+  /** Rounded sand body, 3x3 tiles, drawn once per collision circle. */
   readonly sand: readonly TileId[]
-  /** Grass patch drawn on top of the sand. */
+  /** 2x2 grass patch drawn on the island's main circle. */
   readonly grass: readonly TileId[]
-  /** Rock and foliage decorations that make the island read as land. */
+  /** Rocks and foliage scattered deterministically over the island. */
   readonly props: readonly TileId[]
 }
 
-/**
- * Complete 3x3 sand blob (tiles 0-8 of the sheet) with the matching grass block (22, 23, 38, 39)
- * and props measured on the mockups.
- */
+/** The verified 3x3 rounded blob (indices 0, 1, 2 / 16, 17, 18 / 32, 33, 34). */
+const ROUNDED_SAND_BLOB: readonly TileId[] = [
+  'tile_r0c0',
+  'tile_r0c1',
+  'tile_r0c2',
+  'tile_r1c0',
+  'tile_r1c1',
+  'tile_r1c2',
+  'tile_r2c0',
+  'tile_r2c1',
+  'tile_r2c2',
+]
+
+/** Grass patch (indices 22, 23 / 38, 39) — a complete 2x2 block. */
+const GRASS_PATCH: readonly TileId[] = ['tile_r1c6', 'tile_r1c7', 'tile_r2c6', 'tile_r2c7']
+
+/** Foliage cluster (indices 69, 70, 71). */
+const LEAVES: readonly TileId[] = ['tile_r4c5', 'tile_r4c6', 'tile_r4c7']
+
+/** Rock cluster (indices 48, 49) and the rock-with-vegetation pair (indices 64, 65). */
+const ROCKS: readonly TileId[] = ['tile_r3c0', 'tile_r3c1', 'tile_r4c0', 'tile_r4c1']
+
 export const ISLAND_BLOBS: readonly TileBlob[] = [
-  {
-    sand: [
-      'tile_r0c0',
-      'tile_r0c1',
-      'tile_r0c2',
-      'tile_r1c0',
-      'tile_r1c1',
-      'tile_r1c2',
-      'tile_r2c0',
-      'tile_r2c1',
-      'tile_r2c2',
-    ],
-    grass: ['tile_r1c6', 'tile_r1c7', 'tile_r2c6', 'tile_r2c7'],
-    props: ['tile_r4c5', 'tile_r4c6', 'tile_r4c7', 'tile_r3c0', 'tile_r3c1'],
-  },
-  {
-    sand: [
-      'tile_r0c3',
-      'tile_r0c4',
-      'tile_r0c5',
-      'tile_r1c3',
-      'tile_r1c4',
-      'tile_r1c5',
-      'tile_r2c3',
-      'tile_r2c4',
-      'tile_r2c5',
-    ],
-    grass: ['tile_r1c6', 'tile_r2c6', 'tile_r1c7', 'tile_r2c7'],
-    props: ['tile_r4c5', 'tile_r4c6', 'tile_r3c0'],
-  },
-  {
-    sand: [
-      'tile_r2c0',
-      'tile_r2c1',
-      'tile_r2c2',
-      'tile_r3c0',
-      'tile_r3c1',
-      'tile_r3c2',
-      'tile_r4c0',
-      'tile_r4c1',
-      'tile_r4c2',
-    ],
-    grass: ['tile_r1c6', 'tile_r1c7', 'tile_r2c6', 'tile_r2c7'],
-    props: ['tile_r4c5', 'tile_r4c6', 'tile_r4c7', 'tile_r3c0', 'tile_r3c1'],
-  },
+  { sand: ROUNDED_SAND_BLOB, grass: GRASS_PATCH, props: [...ROCKS, ...LEAVES] },
+  { sand: ROUNDED_SAND_BLOB, grass: GRASS_PATCH, props: [...LEAVES, ...ROCKS] },
+  { sand: ROUNDED_SAND_BLOB, grass: GRASS_PATCH, props: [...ROCKS, ...ROCKS, ...LEAVES] },
 ]
 
 /** Islands are circles for collision and blobs for rendering; the blob is picked by `variant`. */

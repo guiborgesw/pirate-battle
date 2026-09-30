@@ -183,7 +183,37 @@ Available with `?testHooks=1` (or `MODE === 'test'`) as `window.__pb`:
 Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x display), `?assets=missing`
 (blocked texture, retryable), and later `?scenario=`/`?seed=`/`?perf=1` for the mock API and perf work.
 
+## Gameplay: movement, collisions and islands (M5)
+
+- `src/game/sim/World.ts` owns the plain-data world and the ordered system list. `stepWorld()` is the
+  only entry point and it never reads a clock or touches the DOM — which is why the whole ruleset can
+  be run from `pnpm self-check` and from `window.__pb.advance(ms)`.
+- **Heading convention:** `rotation` is radians, `0` points up (screen -Y), positive turns clockwise,
+  so a ship sprite drawn facing up uses `sprite.rotation = ship.rotation` directly.
+- **Player movement** is intent-driven: turn intents change rotation by `turnSpeedRad * dt`, the
+  throttle intent sets `vx`/`vy` from `speed` along the heading, and the position integrates those
+  velocities. Measured in the self-check: one second of throttle covers exactly `speed` pixels.
+- **Arena bounds** clamp every ship to `[radius, size - radius]` and clear the blocked velocity
+  component, so a ship can never leave the visible arena.
+- **Islands** are lists of circles. A ship pushed inside one is moved out along the surface normal and
+  the inward part of its velocity is removed — the tangential part survives, so ships slide along a
+  shore instead of sticking. Both are asserted: dropping a ship on a circle centre pushes it out to
+  exactly `islandRadius + shipRadius`, and ramming an island for 120 s of simulated time never
+  overlaps it (the restated M5 acceptance from `docs/plan-deviations.md` A8).
+- **Config invariant:** every island keeps a ship-sized margin from the arena edge, asserted in the
+  self-check, so the bounds clamp can never squeeze a ship back inside an island.
+- **Input** (`src/game/input/`) fills an `InputState` that is the mutable mirror of the `ShipIntent`
+  contract in `core/intents.ts` — the simulation may not import the input layer, and the compiler
+  keeps the two shapes identical. Keyboard listeners attach only while the match runs, `preventDefault`
+  is limited to game keys, and losing focus clears the state so a ship never sails on by itself.
+- **Rendering** interpolates between the previous and current fixed step
+  (`prev + (current - prev) * alpha`), which is why entities carry `prevX`/`prevY`/`prevRotation`.
+- **Ships are composed from parts** (`hull_N` + `pole` + `sail` + `flag` + `cannon`) rather than using
+  the pre-assembled `ship_*` sprites, so the damage ladder (`hull_large_1..4`) and the per-kind sail
+  colours are available; `src/config/shipAppearance.ts` maps health ratio to the ladder
+  (intact → chipped ≤ 66 % → badly damaged ≤ 33 % → grey wreck).
+
 ## Pending sections
 
-Collisions, the React/Pixi input boundary, gameplay systems, API contracts, cache strategy and
-pending-registration recovery are filled in as M5-M12 land.
+Weapons and projectiles (M6), enemy AI and spawns (M7), match rules (M8), the API layer (M11) and the
+mock scenarios (M12) are filled in as those milestones land.

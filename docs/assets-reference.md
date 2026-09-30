@@ -61,6 +61,15 @@ sunken hull.
 | `crew_1..6`                                 | 22x20-22              | Crew props                                             |
 | `dinghy_large_*` (3) / `dinghy_small_*` (3) | 20x38 / 16x26         | Scenery boats                                          |
 
+## Island rendering note
+
+The tilesheet has exactly **one** complete rounded sand blob: indices 0, 1, 2 / 16, 17, 18 / 32, 33,
+34 (corners measure 80-81 % alpha coverage, the centre 100 %). Every other beige region is plain
+sand with straight edges, so composing islands from those produced rectangles. Islands are therefore
+drawn as overlapping copies of the verified blob — one per collision circle — plus a 2x2 grass patch
+(indices 22, 23 / 38, 39) and a deterministic scatter of rocks (48, 49, 64, 65) and foliage
+(69, 70, 71). The visual shape is therefore the same shape ships and projectiles collide with.
+
 ## UI and HUD
 
 `png/ui/hud/`: `health_frame`, `health_fill_green|amber|red`, `icon_heart`, `counter_panel`,

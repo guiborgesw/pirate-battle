@@ -95,8 +95,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
       id: 'north-reef',
       variant: 1,
       circles: [
-        { x: 700, y: 132, radius: 96 },
-        { x: 806, y: 168, radius: 66 },
+        { x: 700, y: 152, radius: 96 },
+        { x: 806, y: 188, radius: 66 },
       ],
     },
     {

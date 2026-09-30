@@ -72,9 +72,12 @@ function viewportDiagnostics(): SessionDiagnostics & {
     tickerRunning: false,
     hudListeners: 0,
     canvasCount: 0,
+    keyboardAttached: false,
     water: { width: 0, height: 0, pixelWidth: 0, pixelHeight: 0 },
     rendererResolution: 0,
     worldScale: 0,
+    islands: 0,
+    shipViews: 0,
   }
 
   return {
@@ -117,17 +120,17 @@ export function createTestHooks(): PbTestHooks {
     getState(): PbState {
       const session = getCurrentSession()
       const snapshot = session?.getSnapshot()
+      const player = session?.getPlayerState()
 
       return {
         status: snapshot?.status ?? 'none',
         score: snapshot?.score ?? 0,
         remainingMs: (snapshot?.remainingSec ?? 0) * 1000,
-        // The simulated world arrives with M5; until then the hooks report the spawn state.
         player: {
-          x: 0,
-          y: 0,
-          rotation: 0,
-          hp: snapshot?.playerHp ?? 0,
+          x: player?.x ?? 0,
+          y: player?.y ?? 0,
+          rotation: player?.rotation ?? 0,
+          hp: player?.hp ?? snapshot?.playerHp ?? 0,
         },
         enemies: [],
         projectiles: 0,

@@ -70,8 +70,9 @@ export default function App() {
           Play
         </button>
         <p className={styles.note}>
-          M4: fixed-step loop at 60 Hz, {config.arena.width}×{config.arena.height} arena. Add{' '}
-          <code>?testHooks=1</code> for the <code>window.__pb</code> hooks.
+          M5: sail with W/A/S/D and steer clear of the islands on the {config.arena.width}×
+          {config.arena.height} arena. Add <code>?testHooks=1</code> for the{' '}
+          <code>window.__pb</code> hooks.
         </p>
       </section>
     </main>

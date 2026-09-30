@@ -5,10 +5,10 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M4 are complete: scaffold and toolchain, typed config and storage, asset pipeline and
-> the Pixi host running a fixed-step loop on the water arena. Gameplay arrives with M5–M8; the
-> milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is
-> recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
+> **Status:** M1–M5 are complete: scaffold and toolchain, typed config and storage, asset pipeline,
+> Pixi host with a fixed-step loop, and the player sailing an arena with islands and collisions.
+> Weapons arrive with M6. The milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate
+> deviation from it is recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
 
@@ -84,9 +84,11 @@ __pb.stressEnterExit(10) // 10 mount/unmount cycles; then read __pb.lastStress()
 `__pb.lastStress()` reports the peak canvas/session/listener counts while a match was mounted and the
 counts after leaving — that is the milestone's lifecycle check.
 
-## Controls (target for M5/M13)
+## Controls
 
-| Action                      | Keyboard             | Touch                            |
+Keyboard is implemented (M5); touch controls arrive with M13.
+
+| Action                      | Keyboard             | Touch (M13)                      |
 | --------------------------- | -------------------- | -------------------------------- |
 | Move forward                | `W` / `↑`            | forward button (bottom-left)     |
 | Turn left / right           | `A` / `←`, `D` / `→` | turn buttons (bottom-left)       |

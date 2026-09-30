@@ -10,9 +10,17 @@ import {
   configLabel,
   createMatchConfig,
   DEFAULT_GAME_CONFIG,
+  type GameConfig,
 } from '../src/config/gameConfig.ts'
 import { createClock } from '../src/game/core/Clock.ts'
 import { createFixedStepLoop } from '../src/game/core/FixedStepLoop.ts'
+import { createRng } from '../src/game/core/Rng.ts'
+import { EMPTY_INTENT, type ShipIntent } from '../src/game/core/intents.ts'
+import { createWorld, stepWorld, type World } from '../src/game/sim/World.ts'
+import { hullTierFor, shipAppearance } from '../src/config/shipAppearance.ts'
+import { ATLASES, SOUND_KEYS, type AtlasKey } from '../src/game/assets/manifest.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   clampOptionValue,
   DEFAULT_OPTIONS,
@@ -375,6 +383,238 @@ check(
   check('the frame after a resume is dropped (no catch-up burst)', steps === 0, String(steps))
   frames?.(stepMs)
   check('the next frame runs normally', steps === 1, String(steps))
+}
+
+section('movement, bounds and islands')
+
+const testConfig = createMatchConfig({ durationSec: 120, spawnIntervalMs: 3000 })
+/** Movement is asserted in open water so an island collision cannot mask a speed regression. */
+const openWater: Readonly<GameConfig> = { ...testConfig, islands: [] }
+const forwardIntent: ShipIntent = { ...EMPTY_INTENT, forward: true }
+const rightIntent: ShipIntent = { ...EMPTY_INTENT, rotateRight: true }
+
+function runSeconds(world: World, seconds: number, intent: ShipIntent): void {
+  const steps = Math.round(seconds * 60)
+  for (let step = 0; step < steps; step += 1) stepWorld(world, stepMs, intent)
+}
+
+{
+  const world = createWorld({ config: openWater, seed: 1 })
+  const startX = world.player.x
+  const startY = world.player.y
+
+  check(
+    'player starts at the arena centre',
+    startX === 640 && startY === 360,
+    `${startX},${startY}`,
+  )
+
+  runSeconds(world, 1, forwardIntent)
+  const travelled = Math.hypot(world.player.x - startX, world.player.y - startY)
+
+  check(
+    'one second of throttle covers exactly speed x 1 s',
+    Math.abs(travelled - testConfig.player.speed) < 0.5,
+    `${travelled.toFixed(2)} px vs ${testConfig.player.speed}`,
+  )
+  check(
+    'heading 0 sails straight up (-Y)',
+    world.player.y < startY && Math.abs(world.player.x - startX) < 1e-9,
+    `${world.player.x},${world.player.y}`,
+  )
+}
+
+{
+  const world = createWorld({ config: openWater, seed: 1 })
+  runSeconds(world, 1, rightIntent)
+  check(
+    'one second of turn rotates by turnSpeedRad',
+    Math.abs(world.player.rotation - testConfig.player.turnSpeedRad) < 1e-9,
+    String(world.player.rotation),
+  )
+}
+
+{
+  const world = createWorld({ config: openWater, seed: 1 })
+  runSeconds(world, 30, forwardIntent)
+
+  check(
+    'cannot leave the arena (top edge)',
+    world.player.y >= world.player.radius - 1e-9,
+    String(world.player.y),
+  )
+  check(
+    'stays inside the arena horizontally',
+    world.player.x >= world.player.radius &&
+      world.player.x <= testConfig.arena.width - world.player.radius,
+  )
+}
+
+{
+  const world = createWorld({ config: testConfig, seed: 1 })
+  let worstOverlap = 0
+  let offending = ''
+
+  for (const circle of world.islands) {
+    world.player.x = circle.x
+    world.player.y = circle.y
+    world.player.vx = 0
+    world.player.vy = 0
+    stepWorld(world, stepMs, EMPTY_INTENT)
+
+    const distance = Math.hypot(world.player.x - circle.x, world.player.y - circle.y)
+    const overlap = circle.radius + world.player.radius - distance
+
+    if (overlap > worstOverlap) {
+      worstOverlap = overlap
+      offending = circle.islandId
+    }
+  }
+
+  check(
+    'a ship dropped on an island centre is pushed out',
+    worstOverlap < 1e-6,
+    `${offending} overlap ${worstOverlap.toFixed(4)} px`,
+  )
+}
+
+{
+  // Acceptance criterion: ram an island for two minutes of simulated time and never overlap it.
+  const world = createWorld({ config: testConfig, seed: 1 })
+  const target = world.islands[0]
+
+  if (target === undefined) throw new Error('the default config ships no islands')
+
+  world.player.x = target.x
+  world.player.y = target.y + target.radius + 200
+  world.player.rotation = 0
+
+  let deepest = 0
+
+  for (let step = 0; step < 60 * 120; step += 1) {
+    stepWorld(world, stepMs, forwardIntent)
+
+    for (const circle of world.islands) {
+      const distance = Math.hypot(world.player.x - circle.x, world.player.y - circle.y)
+      deepest = Math.max(deepest, circle.radius + world.player.radius - distance)
+    }
+
+    if (world.player.y < world.player.radius) break
+  }
+
+  check(
+    '120 s of ramming an island never enters it',
+    deepest <= 1e-6,
+    `deepest penetration ${deepest.toFixed(4)} px`,
+  )
+}
+
+{
+  const maxShipRadius = Math.max(
+    testConfig.player.radius,
+    testConfig.chaser.radius,
+    testConfig.shooter.radius,
+  )
+  const world = createWorld({ config: testConfig, seed: 1 })
+  let minMargin = Number.POSITIVE_INFINITY
+
+  for (const circle of world.islands) {
+    minMargin = Math.min(
+      minMargin,
+      circle.x - circle.radius,
+      circle.y - circle.radius,
+      testConfig.arena.width - circle.x - circle.radius,
+      testConfig.arena.height - circle.y - circle.radius,
+    )
+  }
+
+  check(
+    'every island keeps a ship-sized margin from the arena edge',
+    minMargin >= maxShipRadius,
+    `margin ${minMargin.toFixed(1)} px vs ship radius ${maxShipRadius}`,
+  )
+}
+
+section('rng and ship appearance')
+
+{
+  const same = [createRng(42), createRng(42)].map((rng) => [rng.next(), rng.next(), rng.next()])
+  const other = createRng(43)
+  const otherSeq = [other.next(), other.next(), other.next()]
+
+  check('same seed reproduces the sequence', JSON.stringify(same[0]) === JSON.stringify(same[1]))
+  check('a different seed diverges', JSON.stringify(same[0]) !== JSON.stringify(otherSeq))
+
+  const rng = createRng(7)
+  let inRange = true
+  for (let draw = 0; draw < 500; draw += 1) {
+    const value = rng.next()
+    if (value < 0 || value >= 1) inRange = false
+  }
+  check('next() stays in [0, 1)', inRange)
+  check(
+    'pickWeighted never picks a zero weight',
+    createRng(1).pickWeighted(['a', 'b'], [1, 0]) === 'a',
+  )
+}
+
+{
+  check('hull tier 1 above 66 %', hullTierFor(1) === 1)
+  check('hull tier 2 at 66 %', hullTierFor(0.66) === 2)
+  check('hull tier 3 at 33 %', hullTierFor(0.33) === 3)
+  check('hull tier 4 when the ship sank', hullTierFor(0, true) === 4)
+  check(
+    'appearance swaps to the damaged hull',
+    shipAppearance('player', 0.3, false).hullFrame === 'hull_large_3',
+    shipAppearance('player', 0.3, false).hullFrame,
+  )
+}
+
+section('atlas manifest')
+
+{
+  // Guards against a stale conversion or a renamed file: the committed atlases must match the
+  // manifest the loader uses at runtime (frame counts included).
+  for (const key of Object.keys(ATLASES) as AtlasKey[]) {
+    const entry = ATLASES[key]
+    const urls = entry.retinaJson === undefined ? [entry.json] : [entry.json, entry.retinaJson]
+
+    for (const url of urls) {
+      const file = join(process.cwd(), url.replace(/^\/assets\//, 'public/assets/'))
+      const label = url.slice(url.lastIndexOf('/') + 1)
+      let frames = -1
+
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'))
+        if (typeof parsed === 'object' && parsed !== null && 'frames' in parsed) {
+          frames = Object.keys((parsed as { frames: Record<string, unknown> }).frames).length
+        }
+      } catch {
+        frames = -1
+      }
+
+      check(
+        `${label} ships ${entry.frames} frames`,
+        frames === entry.frames,
+        `found ${String(frames)}`,
+      )
+    }
+  }
+
+  let missingSounds = 0
+  for (const key of SOUND_KEYS) {
+    try {
+      readFileSync(join(process.cwd(), 'public/assets/sounds', `${key}.wav`))
+    } catch {
+      missingSounds += 1
+    }
+  }
+
+  check(
+    'every sound in the manifest exists on disk',
+    missingSounds === 0,
+    `${missingSounds} missing`,
+  )
 }
 
 console.log(

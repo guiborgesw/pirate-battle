@@ -1,13 +1,14 @@
 /**
- * GameSession is the only object React talks to: it owns the Pixi renderer and the fixed-step loop.
- * React reads a `HudSnapshot` through `useSyncExternalStore`, so the HUD can never re-render per
- * frame by accident.
+ * GameSession is the only object React talks to: it owns the Pixi renderer, the fixed-step loop, the
+ * simulation world and the input devices. React reads a `HudSnapshot` through
+ * `useSyncExternalStore`, so the HUD can never re-render per frame by accident.
  *
  * Lifecycle: `GameSession.create()` → `start()` → (`pause()` / `resume()`)* → `destroy()`. Everything
- * that was created — canvas, ticker listener, ResizeObserver — is released by `destroy()`, which is
- * what lets the arena be mounted and unmounted repeatedly.
+ * that was created — canvas, ticker listener, keyboard listeners, ResizeObserver, views — is
+ * released by `destroy()`, which is what lets the arena be mounted and unmounted repeatedly.
  */
 import type { Ticker } from 'pixi.js'
+import { Container } from 'pixi.js'
 
 import { configKey, type GameConfig } from '../config/gameConfig.ts'
 import { WATER_TILE } from '../config/tileMap.ts'
@@ -18,8 +19,14 @@ import {
   type FixedStepLoop,
   type LoopScheduler,
 } from './core/FixedStepLoop.ts'
+import { createInputState, type InputState } from './input/InputState.ts'
+import { createKeyboardInput, type KeyboardInput } from './input/KeyboardInput.ts'
 import { createRenderer, type Renderer } from './render/Renderer.ts'
 import { createArenaBackground } from './render/views/ArenaBackground.ts'
+import { createIslandView, type IslandView } from './render/views/IslandView.ts'
+import { createShipView, type ShipView } from './render/views/ShipView.ts'
+import type { Ship } from './sim/entities.ts'
+import { createWorld, stepWorld, type World } from './sim/World.ts'
 
 /** One simulation step: 60 Hz. */
 export const STEP_MS = 1000 / 60
@@ -38,6 +45,13 @@ export type HudSnapshot = {
   readonly endReason: EndReason | undefined
 }
 
+export type PlayerState = {
+  readonly x: number
+  readonly y: number
+  readonly rotation: number
+  readonly hp: number
+}
+
 export type SessionDiagnostics = {
   readonly status: SessionStatus
   readonly configKey: string
@@ -48,6 +62,7 @@ export type SessionDiagnostics = {
   readonly tickerRunning: boolean
   readonly hudListeners: number
   readonly canvasCount: number
+  readonly keyboardAttached: boolean
   /** Water texture geometry: `width` is logical, `pixelWidth` is the real sheet pixels. */
   readonly water: {
     readonly width: number
@@ -57,6 +72,8 @@ export type SessionDiagnostics = {
   }
   readonly rendererResolution: number
   readonly worldScale: number
+  readonly islands: number
+  readonly shipViews: number
 }
 
 export type GameSessionOptions = {
@@ -98,11 +115,18 @@ export class GameSession {
   }
 
   private readonly config: Readonly<GameConfig>
+  private readonly assets: LoadedAssets
   private readonly renderer: Renderer
   private readonly clock: Clock
   private readonly loop: FixedStepLoop
+  private readonly world: World
+  private readonly input: InputState
+  private readonly keyboard: KeyboardInput
   private readonly listeners = new Set<() => void>()
   private readonly background: ReturnType<typeof createArenaBackground>
+  private readonly islandViews: IslandView[] = []
+  private readonly shipViews = new Map<number, ShipView>()
+  private readonly shipLayer = new Container()
 
   private status: SessionStatus = 'running'
   private pauseReason: PauseReason | undefined
@@ -112,6 +136,7 @@ export class GameSession {
 
   private constructor(options: GameSessionOptions, renderer: Renderer) {
     this.config = options.config
+    this.assets = options.assets
     this.seed = options.seed
     this.renderer = renderer
 
@@ -128,17 +153,37 @@ export class GameSession {
     })
     renderer.world.addChild(this.background)
 
+    for (const island of this.config.islands) {
+      const view = createIslandView({ island, tiles: options.assets.atlases.tiles })
+      this.islandViews.push(view)
+      renderer.world.addChild(view.container)
+    }
+
+    renderer.world.addChild(this.shipLayer)
+
+    this.world = createWorld({ config: this.config, seed: options.seed })
+    this.input = createInputState()
+    this.keyboard = createKeyboardInput({
+      state: this.input,
+      onPause: () => {
+        this.togglePause()
+      },
+    })
+
     this.clock = createClock({ stepMs: STEP_MS, maxFrameMs: MAX_FRAME_MS })
     this.loop = createFixedStepLoop({
       clock: this.clock,
       scheduler: tickerScheduler(renderer.app),
-      // M5 attaches the world and runs the systems here.
-      onStep: () => undefined,
-      onRender: () => {
+      onStep: () => {
+        stepWorld(this.world, STEP_MS, this.input)
+      },
+      onRender: (alpha) => {
+        this.renderWorld(alpha)
         this.publish()
       },
     })
 
+    this.ensureShipViews()
     this.snapshot = this.computeSnapshot()
     liveSessions += 1
   }
@@ -147,6 +192,7 @@ export class GameSession {
     if (this.destroyed) return
     this.status = 'running'
     this.pauseReason = undefined
+    this.keyboard.attach()
     this.loop.start()
     this.publish()
   }
@@ -155,6 +201,8 @@ export class GameSession {
     if (this.destroyed || this.status !== 'running') return
     this.status = 'paused'
     this.pauseReason = reason
+    // Gameplay keys stop being captured as soon as the match is no longer active (spec §7).
+    this.keyboard.detach()
     this.loop.stop()
     this.publish()
   }
@@ -163,10 +211,12 @@ export class GameSession {
     if (this.destroyed || this.status !== 'paused') return
     this.status = 'running'
     this.pauseReason = undefined
-    // Resuming must not replay the paused wall-clock time: drop the partial accumulator and ignore
-    // the first (huge) frame delta.
+    // Resuming must not replay the paused wall-clock time: clear the inputs, drop the partial
+    // accumulator and ignore the first (huge) frame delta.
+    this.input.clear()
     this.clock.clearAccumulator()
     this.loop.ignoreNextFrame()
+    this.keyboard.attach()
     this.loop.start()
     this.publish()
   }
@@ -193,10 +243,24 @@ export class GameSession {
     this.destroyed = true
     this.status = 'ended'
     this.loop.stop()
+    this.keyboard.detach()
     this.listeners.clear()
+
+    for (const view of this.shipViews.values()) view.destroy()
+    this.shipViews.clear()
+
+    for (const view of this.islandViews) view.destroy()
+    this.islandViews.length = 0
+
+    this.shipLayer.destroy({ children: true })
     this.background.destroy()
     this.renderer.destroy()
     liveSessions -= 1
+  }
+
+  getPlayerState(): PlayerState {
+    const player = this.world.player
+    return { x: player.x, y: player.y, rotation: player.rotation, hp: player.hp }
   }
 
   getDiagnostics(): SessionDiagnostics {
@@ -212,6 +276,7 @@ export class GameSession {
       tickerRunning: this.renderer.app.ticker.started,
       hudListeners: this.listeners.size,
       canvasCount: document.querySelectorAll('canvas').length,
+      keyboardAttached: this.keyboard.isAttached(),
       water: {
         width: this.background.texture.width,
         height: this.background.texture.height,
@@ -220,6 +285,8 @@ export class GameSession {
       },
       rendererResolution: this.renderer.app.renderer.resolution,
       worldScale: this.renderer.scaleFactor(),
+      islands: this.islandViews.length,
+      shipViews: this.shipViews.size,
     }
   }
 
@@ -251,6 +318,31 @@ export class GameSession {
     return this.pauseReason
   }
 
+  /** Drive the input state directly; used by tests that cannot dispatch real key events. */
+  getInput(): InputState {
+    return this.input
+  }
+
+  private ensureShipViews(): void {
+    const parts = this.assets.atlases.ships
+    const ships: Ship[] = [this.world.player, ...this.world.enemies]
+
+    for (const ship of ships) {
+      if (this.shipViews.has(ship.id)) continue
+      const view = createShipView({ parts, ship })
+      this.shipViews.set(ship.id, view)
+      this.shipLayer.addChild(view.container)
+    }
+  }
+
+  private renderWorld(alpha: number): void {
+    this.ensureShipViews()
+
+    for (const ship of [this.world.player, ...this.world.enemies]) {
+      this.shipViews.get(ship.id)?.sync(ship, alpha)
+    }
+  }
+
   private computeSnapshot(): HudSnapshot {
     const durationMs = this.config.match.durationSec * 1000
     const remainingSec = Math.max(0, Math.ceil((durationMs - this.clock.simTimeMs()) / 1000))
@@ -259,7 +351,7 @@ export class GameSession {
       status: this.status,
       score: 0,
       remainingSec,
-      playerHp: this.config.player.maxHp,
+      playerHp: this.world.player.hp,
       endReason: undefined,
     }
   }
