@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    'Trebuchet MS',
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    'Helvetica Neue',
+    sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0e1c2b;
+  color: #f2f4f8;
+}

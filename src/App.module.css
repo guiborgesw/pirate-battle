@@ -1,0 +1,55 @@
+.shell {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  background: url('/assets/ui_scene_background.png') center / cover no-repeat;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(384px, 92vw);
+  aspect-ratio: 384 / 480;
+  padding: 3rem 2.5rem;
+  text-align: center;
+  background: url('/assets/png/ui/menu/panel_menu.png') center / 100% 100% no-repeat;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  letter-spacing: 0.02em;
+  color: #ffe8b0;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 45%);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #dfe8f3;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
+
+.primary {
+  width: 15rem;
+  min-height: 3.25rem;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4a3218;
+  cursor: not-allowed;
+  background: url('/assets/png/ui/menu/button_primary_disabled.png') center / 100% 100% no-repeat;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #cbd6e4;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
