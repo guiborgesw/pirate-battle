@@ -205,12 +205,21 @@ export function createMatchConfig(options: GameOptions = DEFAULT_OPTIONS): Reado
 
 /** Stable key used to group ranking entries that were played with the same configuration. */
 export function configKey(config: Pick<GameConfig, 'match' | 'spawn'>): string {
-  return `d${config.match.durationSec}-s${config.spawn.intervalMs}`
+  return configKeyFor(config.match.durationSec, config.spawn.intervalMs)
+}
+
+/** Same key from the two raw values, so the API layer and the fixtures do not need a whole config. */
+export function configKeyFor(durationSec: number, spawnIntervalMs: number): string {
+  return `d${durationSec}-s${spawnIntervalMs}`
 }
 
 /** Human-readable configuration line shown above the ranking (see the challenge mockups). */
 export function configLabel(config: Pick<GameConfig, 'match' | 'spawn'>): string {
-  const spawnSeconds = config.spawn.intervalMs / 1000
+  return configLabelFor(config.match.durationSec, config.spawn.intervalMs)
+}
+
+export function configLabelFor(durationSec: number, spawnIntervalMs: number): string {
+  const spawnSeconds = spawnIntervalMs / 1000
   const spawnText = Number.isInteger(spawnSeconds) ? `${spawnSeconds}` : spawnSeconds.toFixed(1)
-  return `${config.match.durationSec} SECOND BATTLES · ${spawnText} SECOND SPAWN INTERVAL`
+  return `${durationSec} SECOND BATTLES · ${spawnText} SECOND SPAWN INTERVAL`
 }

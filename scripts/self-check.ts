@@ -72,6 +72,39 @@ import {
   TIME_WARNING_SEC,
 } from '../src/game/audio/alerts.ts'
 import { feedbackForEvent } from '../src/game/render/effects/feedback.ts'
+import { REQUEST_TIMEOUT_MS } from '../src/api/client.ts'
+import {
+  compareHistory,
+  compareRanking,
+  paginate,
+  parseMatchRecord,
+  parsePage,
+  parseRankingEntry,
+  totalPages,
+  type MatchRecord,
+} from '../src/api/contracts.ts'
+import { buildFixtureRecords, FIXTURE_CONFIGS } from '../src/mocks/fixtures.ts'
+import {
+  getMockDb,
+  queryHistory,
+  queryRanking,
+  resetMockDbCache,
+  upsertMatch,
+} from '../src/mocks/db.ts'
+import {
+  configureMocks,
+  currentScenario,
+  DEFAULT_SEED,
+  latencyFor,
+  resolveScenario,
+  setScenario,
+} from '../src/mocks/scenarios.ts'
+import {
+  defaultPlayerName,
+  getPlayer,
+  parseIdentity,
+  resetPlayerCache,
+} from '../src/storage/player.ts'
 import { loadAudioSettings, saveAudioSettings } from '../src/storage/audioSettings.ts'
 import { loadOptions, saveOptions } from '../src/storage/settings.ts'
 
@@ -1756,6 +1789,343 @@ section('audio settings')
   backend.set(STORAGE_KEYS.audio, '{ not json')
   check('a corrupt sound setting falls back to sound on', !loadAudioSettings().muted)
 
+  resetStorageBackend()
+}
+
+section('ranking and history contracts')
+
+{
+  const base = {
+    matchId: 'a0000000-0000-4000-8000-000000000001',
+    playerId: 'fixture-x',
+    playerName: 'X',
+    playedAt: '2026-09-10T10:00:00.000Z',
+    score: 10,
+    durationMs: 120_000,
+    endReason: 'time' as const,
+    config: { durationSec: 120, spawnIntervalMs: 3000, key: 'd120-s3000' },
+  }
+
+  check('a higher score ranks first', compareRanking({ ...base, score: 20 }, base) < 0)
+  check(
+    'an equal score is decided by the shorter match',
+    compareRanking({ ...base, durationMs: 60_000 }, base) < 0,
+  )
+  check(
+    'an equal score and length is decided by the earlier match',
+    compareRanking({ ...base, playedAt: '2026-09-09T10:00:00.000Z' }, base) < 0,
+  )
+  check(
+    'a full tie is decided by the match id, so the order never wobbles',
+    compareRanking({ ...base, matchId: 'a0000000-0000-4000-8000-000000000000' }, base) < 0,
+  )
+  check(
+    'the history reads newest first',
+    compareHistory(base, { ...base, playedAt: '2026-09-09T10:00:00.000Z' }) < 0,
+  )
+
+  const items = Array.from({ length: 40 }, (_, index) => index)
+  const firstPage = paginate(items, 1, 15)
+  check(
+    'the first page holds one page worth of items',
+    firstPage.items.length === 15 && firstPage.total === 40,
+  )
+  check('the first page starts at the beginning', firstPage.items[0] === 0)
+  const lastPage = paginate(items, 3, 15)
+  check('the last page is short', lastPage.items.length === 10 && lastPage.items[0] === 30)
+  check(
+    'a page past the end is empty but honest about the total',
+    paginate(items, 9, 15).items.length === 0 && paginate(items, 9, 15).total === 40,
+  )
+  check(
+    'a page of zero size is not allowed to break the maths',
+    paginate(items, 1, 0).pageSize === 1,
+  )
+  check('three pages of fifteen hold forty items', totalPages(firstPage) === 3)
+  check('an empty list still has one page', totalPages(paginate([], 1, 15)) === 1)
+
+  check('a well-formed record parses', parseMatchRecord(base) !== undefined)
+  check(
+    'a record without an id is refused',
+    parseMatchRecord({ ...base, matchId: '' }) === undefined,
+  )
+  check('a negative score is refused', parseMatchRecord({ ...base, score: -1 }) === undefined)
+  check(
+    'an unparseable date is refused',
+    parseMatchRecord({ ...base, playedAt: 'soon' }) === undefined,
+  )
+  check(
+    'an unknown end reason is refused',
+    parseMatchRecord({ ...base, endReason: 'exploded' }) === undefined,
+  )
+  check(
+    'a record without a configuration is refused',
+    parseMatchRecord({ ...base, config: { key: 'x' } }) === undefined,
+  )
+  check(
+    'a ranking entry needs a rank',
+    parseRankingEntry({ ...base, rank: 1 })?.rank === 1 && parseRankingEntry(base) === undefined,
+  )
+  check(
+    'a page with a broken item is refused whole',
+    parsePage(
+      { items: [base, { ...base, score: 'ten' }], page: 1, pageSize: 15, total: 2 },
+      parseMatchRecord,
+    ) === undefined,
+  )
+  check(
+    'a page with a non-array body is refused',
+    parsePage({ items: 'nope' }, parseMatchRecord) === undefined,
+  )
+}
+
+section('mock fixtures and the database behind them')
+
+{
+  const records = buildFixtureRecords()
+  check('the fixtures hold forty matches', records.length === 40, `${records.length}`)
+  check(
+    'they come from twelve captains',
+    new Set(records.map((record) => record.playerId)).size === 12,
+  )
+  check(
+    'they span three configurations',
+    new Set(records.map((record) => record.config.key)).size === 3,
+  )
+  check(
+    'every match id is unique',
+    new Set(records.map((record) => record.matchId)).size === records.length,
+  )
+  check(
+    'no match claims to have lasted longer than its session',
+    records.every((record) => record.durationMs <= record.config.durationSec * 1000),
+  )
+  check(
+    'a match that ended on time lasted exactly its session',
+    records
+      .filter((record) => record.endReason === 'time')
+      .every((record) => record.durationMs === record.config.durationSec * 1000),
+  )
+  check(
+    'the fixtures are generated twice the same way',
+    JSON.stringify(records) === JSON.stringify(buildFixtureRecords()),
+  )
+
+  const busiest = FIXTURE_CONFIGS[0]?.key ?? ''
+  const board = queryRanking(records, busiest, 1, 15)
+  check(
+    'the board only holds the configuration it was asked for',
+    board.items.every((entry) => entry.config.key === busiest),
+  )
+  check(
+    'the busiest configuration has more than one page',
+    totalPages(board) > 1,
+    `${board.total} rows`,
+  )
+  check(
+    'ranks are assigned in order from one',
+    board.items.every((entry, index) => entry.rank === index + 1),
+  )
+  check(
+    'the board really is ordered by score',
+    board.items.every(
+      (entry, index) => index === 0 || (board.items[index - 1]?.score ?? 0) >= entry.score,
+    ),
+  )
+
+  const own = queryHistory(records, records[0]?.playerId ?? '', 1, 15)
+  check(
+    'the history is one player only',
+    own.items.every((record) => record.playerId === records[0]?.playerId),
+  )
+  check(
+    'the history reads newest first',
+    own.items.every(
+      (record, index) => index === 0 || (own.items[index - 1]?.playedAt ?? '') >= record.playedAt,
+    ),
+  )
+
+  const mine: MatchRecord = {
+    matchId: 'b0000000-0000-4000-8000-000000000001',
+    playerId: 'local-player',
+    playerName: 'Captain Test',
+    playedAt: '2026-09-16T10:00:00.000Z',
+    score: 11,
+    durationMs: 120_000,
+    endReason: 'time',
+    config: { durationSec: 120, spawnIntervalMs: 3000, key: 'd120-s3000' },
+  }
+
+  const store = [...records]
+  const first = upsertMatch(store, mine)
+  check('registering a match creates it once', first.created && store.length === records.length + 1)
+  const again = upsertMatch(store, mine)
+  check(
+    'registering the same match again creates nothing',
+    !again.created && store.length === records.length + 1,
+  )
+  check('the existing record is the one returned', again.record.matchId === mine.matchId)
+  check(
+    'a registered match appears once in the history and once in the ranking',
+    queryHistory(store, 'local-player', 1, 15).total === 1 &&
+      queryRanking(store, 'd120-s3000', 1, 100).items.filter(
+        (entry) => entry.matchId === mine.matchId,
+      ).length === 1,
+  )
+}
+
+section('mock database persistence')
+
+{
+  const backend = new Map<string, string>()
+  configureStorage({
+    getItem: (key) => backend.get(key) ?? null,
+    setItem: (key, value) => {
+      backend.set(key, value)
+    },
+    removeItem: (key) => {
+      backend.delete(key)
+    },
+  })
+
+  const record: MatchRecord = {
+    matchId: 'c0000000-0000-4000-8000-000000000001',
+    playerId: 'persisted-player',
+    playerName: 'Captain Persisted',
+    playedAt: '2026-09-17T10:00:00.000Z',
+    score: 7,
+    durationMs: 90_000,
+    endReason: 'death',
+    config: { durationSec: 120, spawnIntervalMs: 3000, key: 'd120-s3000' },
+  }
+
+  check('the mock database starts from the fixtures', getMockDb().all().length === 40)
+  check('a confirmed registration is stored', getMockDb().upsert(record).created)
+
+  // The `many-pages` scenario asks for more rows every time it answers. Seeding twice used to double
+  // the board on every page view, which the browser run caught as "Page 1 of 46".
+  const beforeSeeding = getMockDb().ranking('d120-s3000', 1, 15).total
+  getMockDb().seedMore('d120-s3000', 60)
+  const afterFirstSeed = getMockDb().ranking('d120-s3000', 1, 15).total
+  getMockDb().seedMore('d120-s3000', 60)
+  const afterSecondSeed = getMockDb().ranking('d120-s3000', 1, 15).total
+  check(
+    'the many-pages scenario really grows the board',
+    afterFirstSeed > beforeSeeding,
+    `${beforeSeeding} → ${afterFirstSeed}`,
+  )
+  check(
+    'seeding the same configuration twice does not double it',
+    afterSecondSeed === afterFirstSeed,
+    `${afterFirstSeed} → ${afterSecondSeed}`,
+  )
+
+  // Forgetting the in-memory copy is exactly what a refresh does to a page.
+  resetMockDbCache()
+  check(
+    'a confirmed registration survives a refresh',
+    getMockDb()
+      .all()
+      .some((item) => item.matchId === record.matchId),
+  )
+  check(
+    'and it is found by the history query without being registered twice',
+    getMockDb().history('persisted-player', 1, 15).total === 1,
+  )
+
+  backend.set(STORAGE_KEYS.mockDb, '{ not json')
+  resetMockDbCache()
+  check('a corrupt mock database falls back to the fixtures', getMockDb().all().length === 40)
+
+  resetMockDbCache()
+  resetStorageBackend()
+}
+
+section('network scenarios')
+
+{
+  check(
+    'scenario names resolve from the query string',
+    resolveScenario('?scenario=empty&seed=9') === 'empty' && currentScenario() === 'empty',
+  )
+  check(
+    'an unknown scenario falls back to the default',
+    resolveScenario('?scenario=nonsense') === 'success',
+  )
+  check('a plain page keeps the default scenario', resolveScenario('') === 'success')
+  check('the normal scenario adds no latency', latencyFor('ranking') === 0)
+
+  setScenario('slow')
+  check('the slow scenario waits two seconds', latencyFor('ranking') === 2000)
+
+  setScenario('timeout')
+  check(
+    'the timeout scenario outlives the client timeout',
+    latencyFor('ranking') > REQUEST_TIMEOUT_MS,
+    `${latencyFor('ranking')} ms vs ${REQUEST_TIMEOUT_MS} ms`,
+  )
+
+  setScenario('out-of-order')
+  const first = latencyFor('ranking')
+  const second = latencyFor('ranking')
+  check(
+    'the out-of-order scenario answers the first request last',
+    first > second,
+    `${first} ms then ${second} ms`,
+  )
+
+  setScenario('timeout-after-save')
+  check(
+    'only the save is delayed once the match is already stored',
+    latencyFor('save') > REQUEST_TIMEOUT_MS && latencyFor('ranking') === 0,
+  )
+
+  setScenario('variable-latency')
+  const samples = [latencyFor('ranking'), latencyFor('ranking'), latencyFor('ranking')]
+  check(
+    'variable latency stays inside its documented window',
+    samples.every((ms) => ms >= 100 && ms <= 1500),
+  )
+
+  configureMocks('success', DEFAULT_SEED)
+  check('the default scenario is restored for the rest of the run', currentScenario() === 'success')
+}
+
+section('player identity')
+
+{
+  const backend = new Map<string, string>()
+  configureStorage({
+    getItem: (key) => backend.get(key) ?? null,
+    setItem: (key, value) => {
+      backend.set(key, value)
+    },
+    removeItem: (key) => {
+      backend.delete(key)
+    },
+  })
+
+  resetPlayerCache()
+  const first = getPlayer()
+  check('a first visit mints a player id', first.playerId.length >= 32, first.playerId)
+  check(
+    'the id is a v4-shaped uuid',
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(first.playerId),
+  )
+  check('the player gets a name to travel with', first.playerName.startsWith('Captain '))
+
+  resetPlayerCache()
+  check('the identity is stable across reads', getPlayer().playerId === first.playerId)
+  check('the identity was written to storage', backend.size > 0)
+
+  check('a broken identity is refused', parseIdentity({ playerId: 'short' }) === undefined)
+  check('a nameless identity is refused', parseIdentity({ playerId: first.playerId }) === undefined)
+  check(
+    'the default name comes from the id',
+    defaultPlayerName('abcdef12-3456-4000-8000-000000000000') === 'Captain ABCD',
+  )
+
+  resetPlayerCache()
   resetStorageBackend()
 }
 

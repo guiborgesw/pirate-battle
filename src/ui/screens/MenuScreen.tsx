@@ -1,13 +1,6 @@
-import { useState } from 'react'
-
 import type { LastMatchResult } from '../../storage/lastResult.ts'
-import {
-  GamePanel,
-  PrimaryButton,
-  SecondaryButton,
-  SoonBadge,
-  TitleBanner,
-} from '../components/GamePanel.tsx'
+import { GamePanel, PrimaryButton, SecondaryButton, TitleBanner } from '../components/GamePanel.tsx'
+import type { LogTab } from '../log/CaptainLogScreen.tsx'
 import { endReasonText, formatClock, pointsLabel } from '../format.ts'
 import styles from './MenuScreen.module.css'
 
@@ -15,6 +8,7 @@ export type MenuScreenProps = {
   readonly lastResult: LastMatchResult | undefined
   readonly onPlay: () => void
   readonly onOptions: () => void
+  readonly onOpenLog: (tab: LogTab) => void
 }
 
 const CONTROLS = [
@@ -29,9 +23,7 @@ const CONTROLS = [
  * Main menu: Play, Options, the control instructions the spec asks for, and the two tabs that the
  * API milestone (M11/M12) fills in. The last finished match stays visible here after a reload.
  */
-export function MenuScreen({ lastResult, onPlay, onOptions }: MenuScreenProps) {
-  const [notice, setNotice] = useState<string | undefined>(undefined)
-
+export function MenuScreen({ lastResult, onPlay, onOptions, onOpenLog }: MenuScreenProps) {
   return (
     <GamePanel titleId="menu-title">
       <TitleBanner label="Pirate Battle" />
@@ -71,28 +63,21 @@ export function MenuScreen({ lastResult, onPlay, onOptions }: MenuScreenProps) {
       <div className={styles.tabs}>
         <SecondaryButton
           testId="tab-ranking"
-          ariaDescribedBy="tabs-soon"
           onClick={() => {
-            setNotice('The ranking board arrives with the API milestone.')
+            onOpenLog('ranking')
           }}
         >
           Ranking
-          <SoonBadge />
         </SecondaryButton>
         <SecondaryButton
           testId="tab-history"
-          ariaDescribedBy="tabs-soon"
           onClick={() => {
-            setNotice('The match history arrives with the API milestone.')
+            onOpenLog('history')
           }}
         >
           Match history
-          <SoonBadge />
         </SecondaryButton>
       </div>
-      <span className={styles.srOnly} id="tabs-soon">
-        Not available yet: these two tabs arrive with the API milestone.
-      </span>
 
       <p className={styles.lastResult} data-testid="last-result">
         {lastResult === undefined
@@ -100,10 +85,6 @@ export function MenuScreen({ lastResult, onPlay, onOptions }: MenuScreenProps) {
           : `Last match: ${lastResult.score} ${pointsLabel(lastResult.score)} · ${formatClock(
               lastResult.playedSec,
             )} · ${endReasonText(lastResult.endReason)}`}
-      </p>
-
-      <p className={styles.status} role="status" aria-live="polite" data-testid="menu-status">
-        {notice}
       </p>
     </GamePanel>
   )

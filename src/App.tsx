@@ -12,10 +12,12 @@ import { LoadingScreen } from './ui/screens/LoadingScreen.tsx'
 import { MenuScreen } from './ui/screens/MenuScreen.tsx'
 import { OptionsScreen } from './ui/screens/OptionsScreen.tsx'
 import { ResultScreen } from './ui/screens/ResultScreen.tsx'
+import { MockPanel } from './ui/dev/MockPanel.tsx'
+import { CaptainLogScreen, type LogTab } from './ui/log/CaptainLogScreen.tsx'
 import { useAssetLoading } from './ui/useAssetLoading.ts'
 import styles from './App.module.css'
 
-type Screen = 'menu' | 'options' | 'game' | 'result'
+type Screen = 'menu' | 'options' | 'game' | 'log' | 'result'
 
 /**
  * Screen router. Loading → menu → (options | arena) → result.
@@ -31,6 +33,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('menu')
   const [config, setConfig] = useState<Readonly<GameConfig>>(() => createMatchConfig())
   const [lastResult, setLastResult] = useState<LastMatchResult | undefined>(() => loadLastResult())
+  const [logTab, setLogTab] = useState<LogTab>('ranking')
 
   useEffect(() => {
     // The browser only lets audio start from a user gesture; this arms that first gesture (spec §2).
@@ -99,10 +102,22 @@ export default function App() {
           onOptions={() => {
             setScreen('options')
           }}
+          onOpenLog={(tab) => {
+            setLogTab(tab)
+            setScreen('log')
+          }}
         />
       )}
       {screen === 'options' && (
         <OptionsScreen
+          onBack={() => {
+            setScreen('menu')
+          }}
+        />
+      )}
+      {screen === 'log' && (
+        <CaptainLogScreen
+          initialTab={logTab}
           onBack={() => {
             setScreen('menu')
           }}
@@ -117,6 +132,10 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Scenario picker for the mock API (Shift+D). Not drawn over the arena, where it would fight
+          with the HUD for the same corner. */}
+      <MockPanel />
     </main>
   )
 }

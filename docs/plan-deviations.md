@@ -125,3 +125,21 @@ Two while implementing M7:
   separate means it applies to the menus too, not just to a match.
 - **The HUD timer turns amber and pulses in the last ten seconds.** The plan asks for the warning
   sound; the highlight uses the same constant so the two cannot drift apart.
+
+## H. Additions while implementing M11
+
+- **The Captain's log is one screen with two tabs**, as `sample_ranking.png` and `sample_history.png`
+  draw it, rather than two separate screens. Switching tabs remounts the table, which is also what
+  satisfies "the tabs refetch when they are shown again".
+- **This screen stretches the wooden frame.** The menu keeps `panel_menu`'s own 384x480 ratio (see F);
+  a table needs the width and the mockups draw a wide board, so here the sprite is stretched and the
+  corner plates are the price. It is a deliberate exception, not an oversight.
+- **The ranking's configuration comes from the stored options at mount**, not from the match config of
+  the last game: opening the log after changing the session length shows the board for the configuration
+  the next match would use, which is what the filter is for.
+- **The scenario panel ships in every build** (plan §1.10 asks for a way to select scenarios; the mocks
+  themselves must work in the published build). It is not drawn over the arena, where it would fight the
+  HUD for the same corner.
+- **The API client counts requests per endpoint** and exposes the counts through the test hooks. Without
+  it, "the tabs refetch when they are shown again" would be an assumption about React Query rather than a
+  measurement — the browser run shows the ranking counter going 2 → 3 on a tab switch.

@@ -1,0 +1,109 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.table th {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9fb4c9;
+  text-align: left;
+}
+
+.table td {
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.25rem;
+  color: #eef4fb;
+}
+
+.row:nth-child(odd) td {
+  background: rgb(10 32 52 / 55%);
+}
+
+.rank {
+  width: 4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.captain {
+  font-weight: 700;
+}
+
+.points {
+  width: 7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffe8b0;
+}
+
+.played,
+.duration,
+.result {
+  width: 9rem;
+  font-variant-numeric: tabular-nums;
+  color: #cfe0f0;
+}
+
+.result {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+}
+
+/* The player's own row in the ranking, and the newest match in the history. */
+.ownRow td,
+.leadRow td {
+  background: rgb(126 108 62 / 65%);
+  color: #fff4dd;
+}
+
+.leadRow .points,
+.ownRow .points {
+  color: #fff4dd;
+}
+
+.star {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.2rem;
+}
+
+.you {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.6rem;
+  background: #ffe8b0;
+  color: #3a2a12;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.6rem;
+}
+
+.pageLabel {
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #cfe0f0;
+}

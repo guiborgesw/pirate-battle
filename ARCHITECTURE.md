@@ -379,6 +379,44 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   rather than in the gameplay options, is applied to the master gain the moment the engine is built,
   and is toggled from Options with `aria-pressed`.
 
+## Remote data and the Captain's log (M11)
+
+- **Contracts first, with a runtime check.** `api/contracts.ts` holds the wire types, both orderings
+  (ranking: score desc → shorter match → earlier → id; history: newest first), the page maths and the
+  parsers. The parsers are not ceremony: a table that renders `undefined` because a field was renamed is
+  worse than one that says it could not read the answer, so a page with a single broken item is refused
+  whole.
+- **One axios instance, one place to look.** Base `/api`, 5 s timeout, and the TanStack `signal`
+  forwarded so a superseded page request is actually aborted (with `exactOptionalPropertyTypes` in the
+  way, the key is only added when there is one). `describeError` prefers the API's own message and
+  deliberately re-throws cancellations untouched — dressing up "a newer page arrived" as an error would
+  be a bug, not a nicety. A request interceptor counts calls per endpoint, which is how "the tabs
+  refetch when they are shown again" became measurable.
+- **Query options are the contract**: `keepPreviousData` so paging never flashes empty, `staleTime`
+  10 s, `retry: 2`, `refetchOnWindowFocus`, and `refetchOnMount: 'always'` — inside the stale window a
+  plain remount would not refetch, and the acceptance says it must.
+- **One collection, two views.** The mock database keeps a single list of match records; the ranking is
+  a filtered sorted view of it and the history a filtered view by player. That is what makes "exactly one
+  history record and one ranking entry, consistent between the tabs" true by construction: an idempotent
+  upsert by match id cannot produce a second entry anywhere. It is persisted in `pb.mockdb.v1`, so
+  confirmed records survive a refresh.
+- **Scenarios are data, not conditionals sprinkled through the handlers.** `mocks/scenarios.ts` resolves
+  `?scenario=`, remembers it in `sessionStorage`, seeds the latency RNG from `?seed=` and owns the
+  per-endpoint latency table; the handlers only translate that into a delay, a failure or an answer.
+  `out-of-order` answers the first request last on purpose, `timeout` outlives the client's own timeout
+  (asserted against `REQUEST_TIMEOUT_MS`), and `timeout-after-save` stores the record _before_ it goes
+  quiet — which is what M12 has to recover from. Two bugs the browser run caught here: seeding ran on
+  every request (the board grew to 46 pages) and the panel's reset only dropped the in-memory copy, so
+  the runaway board came straight back from storage. Both are now asserted headlessly.
+- **The mocks run in every build**, service worker resolved against `BASE_URL`,
+  `onUnhandledRequest: 'bypass'`, started before the first render and failing soft, so a browser without
+  service workers still gets the game. The scenario panel on `Shift+D` ships with it because a reviewer
+  opening the deployed URL needs to walk the failure cases without editing anything.
+- **The board follows the mockups**: one Captain's log screen with two tabs, the wide wooden frame (the
+  menu keeps the sprite's ratio; a table needs the width and the mockups draw it that way), the player's
+  own row and the newest match highlighted, and `Page X of Y` between two round buttons.
+
 ## Pending sections
 
-The API layer (M11) and the mock scenarios (M12) are filled in as those milestones land.
+Registering a finished match — the pending queue, its retries and the recovery scenarios — is filled in
+with M12.

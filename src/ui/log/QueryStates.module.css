@@ -1,0 +1,43 @@
+.state {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  margin: 0;
+  font-size: 0.95rem;
+  color: #cfe0f0;
+}
+
+.message {
+  margin: 0 0 0.6rem;
+  color: #ffd0c4;
+}
+
+.retry {
+  padding: 0.4rem 1.1rem;
+  border: 1px solid rgb(255 232 176 / 40%);
+  border-radius: 0.35rem;
+  font: inherit;
+  font-weight: 700;
+  color: #ffe8b0;
+  cursor: pointer;
+  background: #123048;
+}
+
+.retry:hover {
+  background: #1b4363;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.updating {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9fb4c9;
+  text-align: right;
+}

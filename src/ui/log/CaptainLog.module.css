@@ -1,0 +1,80 @@
+.shell {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  background: url('/assets/ui_scene_background.png') center / cover no-repeat;
+}
+
+/*
+ * The log needs a table's width, so unlike the menu this frame follows the mockups and stretches the
+ * wooden panel: a 384x480 sprite across a wide board. The corner plates tolerate it at this size.
+ */
+.board {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: min(64rem, 94vw);
+  min-height: min(38rem, 92dvh);
+  /* Extra room at the bottom so the last button sits inside the frame instead of over its rail. */
+  padding: 2.5rem 3rem 3.5rem;
+  background: url('/assets/png/ui/menu/panel_menu.png') center / 100% 100% no-repeat;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffe8b0;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 45%);
+}
+
+.tabs {
+  display: flex;
+  gap: 1rem;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.tab,
+.tabActive {
+  min-width: 13rem;
+  min-height: 2.6rem;
+  padding: 0.3rem 1rem;
+  border: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cfe0f0;
+  cursor: pointer;
+  background: url('/assets/png/ui/menu/button_secondary_normal.png') center / 100% 100% no-repeat;
+}
+
+.tabActive {
+  color: #4a3218;
+  background-image: url('/assets/png/ui/menu/button_primary_normal.png');
+}
+
+.tab:focus-visible,
+.tabActive:focus-visible {
+  outline: 0.2rem solid #ffe8b0;
+  outline-offset: 0.2rem;
+}
+
+.subtitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9fb4c9;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+}

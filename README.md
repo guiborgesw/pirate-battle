@@ -5,13 +5,14 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M10 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> **Status:** M1–M11 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
-> the match clock with pause/end/restart, the menu, options and result screens with persistence, and
-> combat feedback with sound. The ranking and history APIs arrive with M11/M12; the milestone map is in
-> [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
-> [`docs/plan-deviations.md`](docs/plan-deviations.md).
+> the match clock with pause/end/restart, the menu, options and result screens with persistence, combat
+> feedback with sound, and the ranking and match history read through a mock REST API. Registering a
+> finished match, and recovering from the network failing while doing it, arrives with M12; the
+> milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded
+> in [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
 
@@ -89,14 +90,14 @@ counts after leaving — that is the milestone's lifecycle check.
 
 ## Screens
 
-| Screen                  | What it does                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| Loading                 | Progress bar over the asset load; a failed texture offer a Retry without a reload                   |
-| Main menu               | Play, Options, the control instructions and the Ranking / Match History tabs                        |
-| Options                 | Game session time and enemy spawn time: steppers, bounds announced, saved immediately and persisted |
-| Match                   | The PixiJS arena with the HUD, keyboard controls and pause (manual and automatic)                   |
-| Result                  | Score, time played, how the match ended, registration status, Play Again and Main Menu              |
-| Ranking / Match History | Placeholders — the API layer arrives with M11/M12                                                   |
+| Screen        | What it does                                                                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loading       | Progress bar over the asset load; a failed texture offer a Retry without a reload                                                                  |
+| Main menu     | Play, Options, the control instructions and the Ranking / Match History tabs                                                                       |
+| Options       | Game session time and enemy spawn time: steppers, bounds announced, saved immediately and persisted                                                |
+| Match         | The PixiJS arena with the HUD, keyboard controls and pause (manual and automatic)                                                                  |
+| Result        | Score, time played, how the match ended, registration status, Play Again and Main Menu                                                             |
+| Captain's log | Ranking (filtered by the configuration in force, paginated) and Match History, with loading, empty, error-with-retry and background-refresh states |
 
 The menu, options and result screens are built from the UI atlas (`panel_menu`,
 `title_pirate_battle`, `button_primary_*`, `button_secondary_*`, `button_round_*` and the control
@@ -139,11 +140,22 @@ To reproduce a blocked texture deterministically (used by the E2E suite too), ap
 
 ## Ranking and Match History
 
-The two tabs read and write simulated REST endpoints (MSW) through Axios + TanStack Query:
-`GET /api/ranking`, `GET /api/players/:playerId/matches`, `PUT /api/matches/:matchId`
-(idempotent: re-sending a match never duplicates it). Finished matches are queued in
-`localStorage` before the request and retried after refresh. Failure scenarios and the dev panel
-that switches between them land in M11/M12.
+The Captain's log reads (and, from M12, writes) simulated REST endpoints through Axios + TanStack Query
+against MSW: `GET /api/ranking?configKey&page&pageSize`, `GET /api/players/:playerId/matches?page&pageSize`
+and `PUT /api/matches/:matchId` (idempotent: re-sending a match never duplicates it — the same match id
+always returns the existing record). The ranking only compares matches played under the same
+configuration and breaks ties by score, then duration, then date, then match id.
+
+Both tables handle loading, empty, error-with-retry and background refresh, and they refetch whenever
+they are shown again. The mock API runs in every build, including the deployed one, so the states can be
+walked through without editing anything: add `?scenario=<name>` to the URL (or press `Shift+D` for the
+picker) and pick from `success`, `empty`, `many-pages`, `slow`, `variable-latency`, `out-of-order`,
+`timeout`, `network-error`, `http-400`, `http-500`, `ranking-fails`, `history-fails`,
+`timeout-after-save` and `offline-at-end`. `?seed=` makes the random ones reproducible, and the panel's
+"Reset mock data" restores the fixtures.
+
+Registration (queuing a finished match in `localStorage` before the request, retrying after a refresh
+and recovering from a timeout without duplicating) arrives with M12.
 
 ## Documentation
 

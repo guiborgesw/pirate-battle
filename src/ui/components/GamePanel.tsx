@@ -105,11 +105,13 @@ export function RoundButton({
   icon,
   label,
   testId,
+  disabled = false,
   onClick,
 }: {
   readonly icon: string
   readonly label: string
   readonly testId?: string
+  readonly disabled?: boolean
   readonly onClick?: () => void
 }) {
   return (
@@ -118,6 +120,7 @@ export function RoundButton({
       type="button"
       aria-label={label}
       data-testid={testId}
+      disabled={disabled}
       onClick={onClick}
     >
       <img
@@ -134,3 +137,5 @@ export function RoundButton({
 export function SoonBadge() {
   return <span className={styles.soon}>Soon</span>
 }
+
+/** Kept for screens that still label a placeholder; the log's tabs no longer need it (M11). */

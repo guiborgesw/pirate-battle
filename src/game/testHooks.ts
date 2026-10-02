@@ -7,6 +7,7 @@
  */
 import type { AudioState } from './audio/AudioEngine.ts'
 import { getAudio } from './audio/audio.ts'
+import { getApiCalls, resetApiCalls } from '../api/client.ts'
 import type {
   EndReason,
   ProjectileState,
@@ -66,6 +67,9 @@ export type PbTestHooks = {
   getAudio(): AudioState
   /** Effects alive right now, by kind or in total. */
   getEffects(kind?: EffectKind): number
+  /** Requests sent per endpoint — how "the tabs refetch" is measured. */
+  getApiCalls(): Readonly<Record<string, number>>
+  resetApiCalls(): void
   /** Drops an enemy at a fixed spot, so a test can stage a fight without waiting for the schedule. */
   spawnEnemy(kind: 'chaser' | 'shooter', x: number, y: number): number
   setSeed(n: number): void
@@ -184,6 +188,8 @@ export function createTestHooks(): PbTestHooks {
     getEffects(kind?: EffectKind): number {
       return getCurrentSession()?.getEffectCount(kind) ?? 0
     },
+    getApiCalls,
+    resetApiCalls,
 
     spawnEnemy(kind, x, y): number {
       return getCurrentSession()?.spawnEnemy(kind, x, y) ?? -1
