@@ -272,7 +272,44 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   when the tier changes, the width only when the ratio does, and the bars live in an unrotated layer
   so they stay level while the hull rolls.
 
+## Match clock, pause and end (M8)
+
+- **The simulation owns the clock.** `world.remainingMs` counts down inside `matchSystem`, which runs
+  last in the step — so the step in which the buzzer sounds still resolves completely (a cannonball
+  already in the air can still land) and the freeze starts on the next step. The HUD reads the
+  simulation, never wall time, so a paused or finished match cannot drift on screen.
+- **The match ends two ways**: the clock reaching zero (`'time'`) or the player's hull reaching zero
+  (`'death'`). The first reason written wins; nothing can rewrite how a match ended.
+- **The freeze is one guard**, `if (world.ended) return` at the top of `stepWorld`, rather than a
+  check sprinkled through every system. That is what makes "the end stops movement, attacks, damage,
+  spawns and scoring" (spec §2) true by construction. Asserted with every input held down for five
+  simulated seconds against a finished match: the clock does not advance, the ship does not move or
+  turn, the guns produce nothing, the schedule stays off and the score cannot move.
+
+* **Pause** (§1.6) triggers on `P`/`Escape`, the HUD button, `window.blur` and a hidden tab. While
+  paused the loop does not step, so the clock and every cooldown are frozen, and the gameplay key
+  listeners are detached — a paused match cannot be driven by keys that are still held down. Resume is
+  an explicit action in the dialog: it clears `InputState`, clears the loop's partial accumulator and
+  drops the next frame delta, so the paused wall-clock time is never replayed. The acceptance check is
+  a 20 s pause measured in real time against `world.remainingMs`.
+* **Keyboard contract**: a keystroke another handler already consumed must not be treated as gameplay
+  input. `resume()` re-attaches the gameplay keys, so without this the Escape that resumed the match
+  kept bubbling to the freshly attached listener and paused it again — the dialog could not be left
+  with the keyboard at all. The dialog consumes Escape (`preventDefault` + `stopPropagation`) and
+  `KeyboardInput` ignores `defaultPrevented` events; both halves are asserted in `pnpm self-check`
+  against an injected listener target.
+
+- **The HUD is an external store.** `GameSession` holds the snapshot and notifies subscribers;
+  `GameScreen` reads it with `useSyncExternalStore`, and `publish()` emits a new snapshot object only
+  when a visible field actually changes. The claim "the HUD does not re-render every frame" is
+  measured, not asserted: `renderCounter.ts` counts real HUD renders and `window.__pb.getHudRenders()`
+  exposes the count (measured on a production build, since React Strict Mode double-invokes render in
+  development).
+- **Restart is a real remount**: `GameScreen` bumps a run id, the effect cleanup calls `destroy()` and
+  a session is built from scratch, so hull, score, clock and every entity are restored instead of
+  reset field by field. The compact result panel here is a placeholder — M9 replaces it with the
+  styled result screen and the registration status.
+
 ## Pending sections
 
-Match rules and pause (M8), the API layer (M11) and the mock scenarios (M12) are filled in as those
-milestones land.
+The API layer (M11) and the mock scenarios (M12) are filled in as those milestones land.

@@ -79,3 +79,14 @@ Two while implementing M7:
 | D2  | Options as steppers (mockup) or as validated inputs (brief)?             | Steppers + clamped limits  |
 | D3  | Confirm the ~2 week estimate with the challenge provider before starting | Estimate sent as B1        |
 | D4  | Vercel deployment credentials for M16                                    | M16 blocked until provided |
+
+## E. Additions while implementing M8
+
+- `HudSnapshot` gained **`pauseReason`** (`'user' | 'blur' | 'hidden' | 'auto'`). The plan's snapshot
+  shape stopped at `endReason`, but the pause dialog has to say _why_ the match stopped — "you paused
+  it" and "the tab went to the background" call for different reactions from the player. It joins the
+  same contract: a new snapshot object only when a visible field changes.
+- The **result panel is a placeholder** in `Hud.tsx`. M9 owns the styled result screen (score, time
+  played, end reason, registration status, Play Again, Main Menu), so M8 only implements what its
+  acceptance needs: the match stops, the score is readable, and "Play again" is a real
+  `destroy()` + new session.

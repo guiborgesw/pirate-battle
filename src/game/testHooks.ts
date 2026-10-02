@@ -13,6 +13,7 @@ import type {
 } from './GameSession.ts'
 import { liveSessionCount } from './GameSession.ts'
 import { getCurrentSession } from './sessionRegistry.ts'
+import { hudRenderCount } from '../ui/hud/renderCounter.ts'
 
 export type PbState = {
   readonly status: SessionStatus | 'none'
@@ -54,6 +55,10 @@ export type PbTestHooks = {
   getProjectiles(): readonly ProjectileState[]
   /** Shots fired since the match started, including the ones already gone. */
   getShotsFired(): number
+  /** Exact milliseconds left on the simulation clock (the HUD shows rounded seconds). */
+  getRemainingMs(): number
+  /** How many times the HUD React component has rendered — the "not every frame" measurement. */
+  getHudRenders(): number
   /** Drops an enemy at a fixed spot, so a test can stage a fight without waiting for the schedule. */
   spawnEnemy(kind: 'chaser' | 'shooter', x: number, y: number): number
   setSeed(n: number): void
@@ -139,7 +144,7 @@ export function createTestHooks(): PbTestHooks {
       return {
         status: snapshot?.status ?? 'none',
         score: session?.getScore() ?? snapshot?.score ?? 0,
-        remainingMs: (snapshot?.remainingSec ?? 0) * 1000,
+        remainingMs: session?.getRemainingMs() ?? (snapshot?.remainingSec ?? 0) * 1000,
         player: {
           x: player?.x ?? 0,
           y: player?.y ?? 0,
@@ -159,6 +164,12 @@ export function createTestHooks(): PbTestHooks {
     getShotsFired(): number {
       return getCurrentSession()?.getShotsFired() ?? 0
     },
+
+    getRemainingMs(): number {
+      return getCurrentSession()?.getRemainingMs() ?? 0
+    },
+
+    getHudRenders: hudRenderCount,
 
     spawnEnemy(kind, x, y): number {
       return getCurrentSession()?.spawnEnemy(kind, x, y) ?? -1

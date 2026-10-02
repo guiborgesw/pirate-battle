@@ -7,12 +7,14 @@
  */
 import type { Circle, GameConfig, IslandDefinition } from '../../config/gameConfig.ts'
 import { createRng, type Rng } from '../core/Rng.ts'
+import { MS_PER_SECOND } from '../core/math.ts'
 import type { ShipIntent } from '../core/intents.ts'
 import type { EnemyShip, PlayerShip, Projectile, Ship } from './entities.ts'
 import { aiSystem } from './systems/ai.ts'
 import { chaserContactSystem, projectileImpactSystem } from './systems/combat.ts'
 import { islandCollisionSystem, projectileIslandSystem } from './systems/collision.ts'
 import { applyArenaBounds, movementSystem } from './systems/movement.ts'
+import { matchSystem, type SimEndReason } from './systems/match.ts'
 import { projectilesSystem } from './systems/projectiles.ts'
 import { spawnSystem } from './systems/spawn.ts'
 import { weaponsSystem } from './systems/weapons.ts'
@@ -45,6 +47,11 @@ export type World = {
   shotsFired: number
   /** Points from enemies the player destroyed. Chaser self-destructs never move this. */
   score: number
+  /** Milliseconds left on the match clock. The simulation, not the React clock, owns this. */
+  remainingMs: number
+  /** True once the buzzer has sounded or the player sank; `stepWorld` refuses to run after that. */
+  ended: boolean
+  endReason: SimEndReason | undefined
   /** Milliseconds accumulated towards the next spawn. */
   spawnElapsedMs: number
   /** How many enemies the schedule has placed — the first-two-kinds guarantee reads this. */
@@ -100,6 +107,9 @@ export function createWorld(options: WorldOptions): World {
     nextEntityId: 2,
     shotsFired: 0,
     score: 0,
+    remainingMs: config.match.durationSec * MS_PER_SECOND,
+    ended: false,
+    endReason: undefined,
     spawnElapsedMs: 0,
     spawnsMade: 0,
   }
@@ -170,6 +180,10 @@ export function consumeEvents(world: World): SimEvent[] {
  * step; `compact()` last means no system ever reads a half-removed array.
  */
 export function stepWorld(world: World, dtMs: number, intent: ShipIntent): void {
+  // Frozen. After the buzzer nothing moves, fires, spawns or scores (spec §2) — and the simulation
+  // clock stops with it, so the HUD cannot keep counting down a match that is over.
+  if (world.ended) return
+
   capturePreviousTransforms(world)
   world.simTimeMs += dtMs
 
@@ -186,6 +200,5 @@ export function stepWorld(world: World, dtMs: number, intent: ShipIntent): void 
 
   spawnSystem(world, dtMs)
   compact(world)
-
-  // M8: match clock, end conditions and the freeze that follows.
+  matchSystem(world, dtMs)
 }

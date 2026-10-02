@@ -53,6 +53,8 @@ export type HudSnapshot = {
   readonly remainingSec: number
   readonly playerHp: number
   readonly endReason: EndReason | undefined
+  /** Why the match is paused, so the dialog can say it instead of guessing. */
+  readonly pauseReason: PauseReason | undefined
 }
 
 export type PlayerState = {
@@ -230,12 +232,18 @@ export class GameSession {
       scheduler: tickerScheduler(renderer.app),
       onStep: () => {
         stepWorld(this.world, STEP_MS, this.input)
+        if (this.world.ended) this.finishMatch()
       },
       onRender: (alpha) => {
         this.renderWorld(alpha)
         this.publish()
       },
     })
+
+    // Automatic pause (spec §2): losing focus or hiding the tab must never let the fight run on
+    // unattended. Resume stays an explicit user action — see the pause dialog.
+    window.addEventListener('blur', this.handleBlur)
+    document.addEventListener('visibilitychange', this.handleVisibilityChange)
 
     this.ensureShipViews()
     this.snapshot = this.computeSnapshot()
@@ -298,6 +306,8 @@ export class GameSession {
     this.status = 'ended'
     this.loop.stop()
     this.keyboard.detach()
+    window.removeEventListener('blur', this.handleBlur)
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange)
     this.listeners.clear()
 
     for (const view of this.shipViews.values()) view.destroy()
@@ -339,6 +349,11 @@ export class GameSession {
   /** Shots fired since the match started, counting the ones that already died. */
   getShotsFired(): number {
     return this.world.shotsFired
+  }
+
+  /** Milliseconds left on the simulation clock, unrounded — the ±1 step checks read this. */
+  getRemainingMs(): number {
+    return this.world.remainingMs
   }
 
   getScore(): number {
@@ -485,16 +500,41 @@ export class GameSession {
   }
 
   private computeSnapshot(): HudSnapshot {
-    const durationMs = this.config.match.durationSec * 1000
-    const remainingSec = Math.max(0, Math.ceil((durationMs - this.clock.simTimeMs()) / 1000))
+    // Both the clock and the score come from the simulation, never from wall time, so a paused or
+    // finished match cannot drift on screen.
+    const remainingSec = Math.max(0, Math.ceil(this.world.remainingMs / 1000))
 
     return {
       status: this.status,
       score: this.world.score,
       remainingSec,
       playerHp: this.world.player.hp,
-      endReason: undefined,
+      endReason: this.world.endReason,
+      pauseReason: this.pauseReason,
     }
+  }
+
+  /**
+   * The match is over: stop stepping and stop capturing gameplay keys. The scene stays on screen
+   * frozen, which is what the result screen (M9) will draw over.
+   */
+  private finishMatch(): void {
+    if (this.status === 'ended' || this.destroyed) return
+
+    this.status = 'ended'
+    this.pauseReason = undefined
+    this.keyboard.detach()
+    this.loop.stop()
+    this.publish()
+  }
+
+  /** Pauses when the window loses focus or the tab is hidden (spec §2, plan §1.6). */
+  private handleBlur = (): void => {
+    this.pause('blur')
+  }
+
+  private handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') this.pause('hidden')
   }
 
   /** Emits a new snapshot object only when a visible field actually changed. */
@@ -507,7 +547,8 @@ export class GameSession {
       next.score !== previous.score ||
       next.remainingSec !== previous.remainingSec ||
       next.playerHp !== previous.playerHp ||
-      next.endReason !== previous.endReason
+      next.endReason !== previous.endReason ||
+      next.pauseReason !== previous.pauseReason
 
     if (!changed) return
 

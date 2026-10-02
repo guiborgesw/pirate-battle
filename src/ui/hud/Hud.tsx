@@ -1,9 +1,14 @@
-import type { HudSnapshot } from '../../game/GameSession.ts'
+import type { EndReason, HudSnapshot } from '../../game/GameSession.ts'
+import { PauseDialog } from './PauseDialog.tsx'
+import { noteHudRender } from './renderCounter.ts'
 import styles from './Hud.module.css'
 
 export type HudProps = {
   readonly snapshot: HudSnapshot
   readonly onExit: () => void
+  readonly onPause: () => void
+  readonly onResume: () => void
+  readonly onRestart: () => void
 }
 
 /** mm:ss, as in the challenge mockups (01:42). */
@@ -14,7 +19,15 @@ export function formatClock(seconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
-export function Hud({ snapshot, onExit }: HudProps) {
+const END_TEXT: Record<EndReason, string> = {
+  time: 'Time is up.',
+  death: 'Your hull was sunk.',
+}
+
+export function Hud({ snapshot, onExit, onPause, onResume, onRestart }: HudProps) {
+  // Counts real renders so the "HUD does not re-render every frame" claim is measurable.
+  noteHudRender()
+
   const hpPercent = Math.max(0, Math.min(100, snapshot.playerHp))
 
   return (
@@ -67,9 +80,59 @@ export function Hud({ snapshot, onExit }: HudProps) {
         </p>
       </div>
 
-      <button className={styles.exit} data-testid="exit" type="button" onClick={onExit}>
-        Exit
-      </button>
+      <div className={styles.controls}>
+        {snapshot.status === 'running' && (
+          <button className={styles.exit} data-testid="pause" type="button" onClick={onPause}>
+            Pause
+          </button>
+        )}
+        <button className={styles.exit} data-testid="exit" type="button" onClick={onExit}>
+          Exit
+        </button>
+      </div>
+
+      {/*
+        Overlays live in their own full-viewport layer. The HUD bar itself is a thin strip at the top
+        of the arena, so anchoring a dialog to it would centre the dialog on that strip and clip it.
+      */}
+      <div className={styles.overlay}>
+        {snapshot.status === 'paused' && (
+          <PauseDialog reason={snapshot.pauseReason} onResume={onResume} />
+        )}
+
+        {/* M9 turns this into the styled result screen with registration status; M8 only needs the
+            match to stop, the score to be readable and a restart that is a real new session. */}
+        {snapshot.status === 'ended' && (
+          <section
+            className={styles.result}
+            data-testid="match-over"
+            aria-labelledby="result-title"
+          >
+            <h2 className={styles.resultTitle} id="result-title">
+              Match over
+            </h2>
+            <p className={styles.resultScore} data-testid="final-score">
+              {snapshot.score} {snapshot.score === 1 ? 'point' : 'points'}
+            </p>
+            <p className={styles.resultReason}>
+              {snapshot.endReason === undefined ? '' : END_TEXT[snapshot.endReason]}
+            </p>
+            <div className={styles.resultActions}>
+              <button
+                className={styles.primary}
+                data-testid="play-again"
+                type="button"
+                onClick={onRestart}
+              >
+                Play again
+              </button>
+              <button className={styles.exit} type="button" onClick={onExit}>
+                Main menu
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   )
 }

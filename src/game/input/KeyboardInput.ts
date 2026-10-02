@@ -55,6 +55,12 @@ export function createKeyboardInput(options: KeyboardInputOptions): KeyboardInpu
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
+    // A listener re-attached by `resume()` can see the very keystroke that caused the resume: pressing
+    // Escape in the pause dialog resumed the match and then the freshly attached gameplay listener
+    // paused it again, which made the dialog impossible to leave with the keyboard. Anything an
+    // upstream handler already consumed (the dialog marks Escape as handled) is not gameplay input.
+    if (event.defaultPrevented) return
+
     const action = actionFor(event)
     if (action === undefined) return
 

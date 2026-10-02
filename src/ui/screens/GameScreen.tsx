@@ -21,6 +21,7 @@ const IDLE_SNAPSHOT: HudSnapshot = {
   remainingSec: 0,
   playerHp: 0,
   endReason: undefined,
+  pauseReason: undefined,
 }
 
 const noop = (): void => {
@@ -32,6 +33,9 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
   const sessionRef = useRef<GameSession | undefined>(undefined)
   const [session, setSession] = useState<GameSession | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
+  // Restart is a real remount: bumping this destroys the session and builds a new one, so hull,
+  // score, clock and every entity are restored rather than reset field by field (spec §2).
+  const [runId, setRunId] = useState(0)
 
   useEffect(() => {
     const host = hostRef.current
@@ -64,7 +68,7 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
       setCurrentSession(undefined)
       active?.destroy()
     }
-  }, [config, seed, assets])
+  }, [config, seed, assets, runId])
 
   const subscribe = useCallback(
     (listener: () => void) => session?.subscribe(listener) ?? noop,
@@ -75,10 +79,28 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
 
   const hud = useSyncExternalStore(subscribe, getSnapshot)
 
+  const handlePause = useCallback((): void => {
+    sessionRef.current?.pause('user')
+  }, [])
+
+  const handleResume = useCallback((): void => {
+    sessionRef.current?.resume()
+  }, [])
+
+  const handleRestart = useCallback((): void => {
+    setRunId((value) => value + 1)
+  }, [])
+
   return (
     <main className={styles.screen} data-testid="arena">
       <div className={styles.canvasHost} ref={hostRef} />
-      <Hud snapshot={hud} onExit={onExit} />
+      <Hud
+        snapshot={hud}
+        onExit={onExit}
+        onPause={handlePause}
+        onResume={handleResume}
+        onRestart={handleRestart}
+      />
       {error !== undefined && (
         <p className={styles.error} role="alert">
           {error}

@@ -18,6 +18,8 @@ import { createRng } from '../src/game/core/Rng.ts'
 import { EMPTY_INTENT, type ShipIntent } from '../src/game/core/intents.ts'
 import { angleDelta, distanceSquared, headingToVector } from '../src/game/core/math.ts'
 import { headingToPoint } from '../src/game/sim/systems/ai.ts'
+import { createInputState } from '../src/game/input/InputState.ts'
+import { createKeyboardInput } from '../src/game/input/KeyboardInput.ts'
 import { addEnemy, findBerth } from '../src/game/sim/systems/spawn.ts'
 import { createWorld, stepWorld, type World } from '../src/game/sim/World.ts'
 import { consumeEvents } from '../src/game/sim/World.ts'
@@ -1206,6 +1208,181 @@ function islandClearance(world: World, ship: { x: number; y: number; radius: num
     `peak ${peakAlive} of ${world.config.spawn.maxAlive}`,
   )
   check('the player never scored with no shots fired', world.score === 0)
+}
+
+section('match clock and the freeze')
+
+/** Everything at once: the freeze has to swallow movement, turning and all three guns. */
+const everythingIntent: ShipIntent = {
+  forward: true,
+  rotateLeft: true,
+  rotateRight: false,
+  fireFront: true,
+  fireLeft: true,
+  fireRight: true,
+}
+
+{
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 31 })
+  const durationMs = world.config.match.durationSec * 1000
+  const stepsToDuration = Math.round(durationMs / enemyStepMs)
+
+  check(
+    'the clock starts at the configured duration',
+    world.remainingMs === durationMs,
+    `${world.remainingMs} ms`,
+  )
+
+  runFor(world, ((stepsToDuration - 1) * enemyStepMs) / 1000)
+  check(
+    'a step before the buzzer the match is still running',
+    !world.ended,
+    `${world.remainingMs.toFixed(2)} ms left`,
+  )
+
+  let guard = 0
+  while (!world.ended && guard < 4) {
+    stepWorld(world, enemyStepMs, EMPTY_INTENT)
+    guard += 1
+  }
+
+  check(
+    'the match ends at the buzzer',
+    world.ended && world.endReason === 'time',
+    `reason ${world.endReason ?? 'none'} after ${world.simTimeMs.toFixed(1)} ms`,
+  )
+  check(
+    // 1000/60 does not divide 120000 exactly, so the buzzer may land a fraction of a step late.
+    'the match lasts its configured duration within one step',
+    Math.abs(world.simTimeMs - durationMs) <= enemyStepMs,
+    `${world.simTimeMs.toFixed(1)} ms vs ${durationMs} ms`,
+  )
+  check('the clock is spent', world.remainingMs <= enemyStepMs, `${world.remainingMs} ms`)
+
+  const frozen = {
+    simTimeMs: world.simTimeMs,
+    remainingMs: world.remainingMs,
+    score: world.score,
+    shotsFired: world.shotsFired,
+    playerX: world.player.x,
+    playerY: world.player.y,
+    playerRotation: world.player.rotation,
+    projectiles: world.projectiles.length,
+    enemies: world.enemies.length,
+    spawnsMade: world.spawnsMade,
+  }
+
+  // Every input pressed, for five simulated seconds, against a finished match.
+  for (let step = 0; step < 300; step += 1) stepWorld(world, enemyStepMs, everythingIntent)
+
+  check('after the end the clock does not advance', world.simTimeMs === frozen.simTimeMs)
+  check(
+    'after the end the ship does not move or turn',
+    world.player.x === frozen.playerX &&
+      world.player.y === frozen.playerY &&
+      world.player.rotation === frozen.playerRotation,
+  )
+  check(
+    'after the end the guns do nothing',
+    world.projectiles.length === 0 && world.shotsFired === frozen.shotsFired,
+    `${world.projectiles.length} projectile(s), ${world.shotsFired} shot(s)`,
+  )
+  check('after the end the spawn schedule is off', world.spawnsMade === frozen.spawnsMade)
+  check(
+    'after the end the score cannot move',
+    world.score === frozen.score && world.enemies.length === frozen.enemies,
+  )
+}
+
+{
+  // Death ends the match early, with time still on the clock.
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 32 })
+  const hp = world.config.player.maxHp
+  const chaserDamage = world.config.chaser.contactDamage
+  const chasersNeeded = Math.ceil(hp / chaserDamage)
+
+  for (let index = 0; index < chasersNeeded; index += 1) {
+    const angle = (index / chasersNeeded) * Math.PI * 2
+    addEnemy(
+      world,
+      'chaser',
+      world.player.x + Math.cos(angle) * 150,
+      world.player.y + Math.sin(angle) * 150,
+    )
+  }
+
+  let guard = 0
+  while (!world.ended && guard < 900) {
+    stepWorld(world, enemyStepMs, EMPTY_INTENT)
+    guard += 1
+  }
+
+  check(
+    'losing the hull ends the match with time still on the clock',
+    world.ended && world.endReason === 'death' && world.remainingMs > 0,
+    `${world.remainingMs.toFixed(0)} ms left`,
+  )
+  // Stepping a finished match cannot rewrite how it ended.
+  stepWorld(world, enemyStepMs, EMPTY_INTENT)
+  check('the ending reason is written once and does not change', world.endReason === 'death')
+}
+
+section('keyboard contract')
+
+{
+  // The gameplay keys must ignore a keystroke another handler already consumed. Without this, Escape
+  // in the pause dialog resumed the match and the same event then paused it again through the
+  // keyboard listener that `resume()` had just re-attached.
+  const listeners = new Map<string, (event: KeyboardEvent) => void>()
+  const target = {
+    addEventListener: (type: string, handler: (event: KeyboardEvent) => void) => {
+      listeners.set(type, handler)
+    },
+    removeEventListener: (type: string) => {
+      listeners.delete(type)
+    },
+  } as unknown as Window
+
+  const state = createInputState()
+  let pauses = 0
+  const keyboard = createKeyboardInput({
+    state,
+    onPause: () => {
+      pauses += 1
+    },
+    target,
+  })
+
+  keyboard.attach()
+  check('the keyboard attaches its listeners', listeners.has('keydown') && listeners.has('keyup'))
+
+  const press = (key: string, defaultPrevented: boolean): void => {
+    listeners.get('keydown')?.({
+      key,
+      repeat: false,
+      defaultPrevented,
+      preventDefault: () => undefined,
+    } as unknown as KeyboardEvent)
+  }
+
+  press('Escape', true)
+  check('a keystroke another handler consumed is not gameplay input', pauses === 0)
+
+  press('Escape', false)
+  check('Escape still pauses when nobody consumed it', pauses === 1)
+
+  press('w', false)
+  check('movement keys still reach the input state', state.forward)
+
+  const consumedMovement = createInputState()
+  const secondKeyboard = createKeyboardInput({
+    state: consumedMovement,
+    onPause: () => undefined,
+    target,
+  })
+  secondKeyboard.attach()
+  press('w', true)
+  check('a consumed movement key does not stick either', !consumedMovement.forward)
 }
 
 section('ship art orientation')
