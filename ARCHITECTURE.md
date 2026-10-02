@@ -416,7 +416,27 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   menu keeps the sprite's ratio; a table needs the width and the mockups draw it that way), the player's
   own row and the newest match highlighted, and `Page X of Y` between two round buttons.
 
+## Registering a finished match (M12)
+
+- **The order is the design.** A finished match is written to `pb.pending.v1` _before_ the request goes
+  out, the request is a `PUT` keyed by match id, and only a confirmed answer removes it. So a lost answer
+  costs a retry and never a record, and a retry cannot duplicate because the server keys on that id. An
+  abandoned match writes nothing at all — the write happens in the same breath as the match ending.
+- **The queue is the only source of truth for a match's status.** `removePending` is called from the
+  flush and nowhere else, which makes "still queued" and "not registered yet" the same question. The
+  result screen reads that answer (`saving` while a flush is in flight, then `saved` or `failed`) instead
+  of tracking a status beside the queue — a second source of truth is how a screen ends up insisting
+  "Registering…" about a match the server stored a minute ago.
+- **A flush is a queue, not a race.** One at a time (guarded by a ref), sequential, oldest first, and a
+  failure does not stop the records behind it. Flushing runs on boot — which is what makes a match queued
+  in a previous visit register after a reload — and on the browser's `online` event.
+- **Only a confirmed save invalidates the tabs.** On success the ranking and history roots are
+  invalidated and the stored result is marked registered, so the menu's "last match" line stops claiming
+  a match is unregistered and the player's own row appears in the log with the `You` badge.
+- **The registration call is not a react-query mutation.** The mutation object's identity changes on
+  every render, which re-armed the effect that flushes and re-sent the same match in a loop; an explicit
+  async routine is stable and says what it does. Recorded in `docs/plan-deviations.md` §I.
+
 ## Pending sections
 
-Registering a finished match — the pending queue, its retries and the recovery scenarios — is filled in
-with M12.
+Touch controls, the accessibility pass and the end-to-end Playwright suite are filled in with M13/M14.

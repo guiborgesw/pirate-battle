@@ -64,6 +64,19 @@ import {
   saveLastResult,
   type LastMatchResult,
 } from '../src/storage/lastResult.ts'
+import {
+  flushPending,
+  buildMatchRecord,
+  registrationStatusFor,
+  type FlushOutcome,
+} from '../src/api/registration.ts'
+import {
+  clearPending,
+  enqueuePending,
+  orderedPending,
+  removePending,
+} from '../src/storage/pending.ts'
+import { markResultRegistered } from '../src/storage/lastResult.ts'
 import { endReasonText, formatClock, pointsLabel, registrationText } from '../src/ui/format.ts'
 import {
   INITIAL_ALERTS,
@@ -1483,6 +1496,7 @@ section('options and last-result persistence')
   )
 
   const result: LastMatchResult = {
+    matchId: 'd0000000-0000-4000-8000-000000000001',
     score: 12,
     playedSec: 120,
     durationSec: 120,
@@ -1512,6 +1526,22 @@ section('options and last-result persistence')
   check(
     'a result with an unparseable timestamp is refused',
     parseLastResult({ ...result, finishedAt: 'yesterday' }) === undefined,
+  )
+  check(
+    'a result that belongs to no match is refused',
+    parseLastResult({ ...result, matchId: undefined }) === undefined,
+  )
+
+  // A confirmed registration marks exactly the result it belongs to (plan §1.9).
+  markResultRegistered('d0000000-0000-4000-8000-000000000002')
+  check(
+    'confirming someone else’s match leaves this result alone',
+    loadLastResult()?.registration === 'pending',
+  )
+  markResultRegistered(result.matchId)
+  check(
+    'confirming this match marks the stored result as registered',
+    loadLastResult()?.registration === 'saved',
   )
 
   // "An abandoned match is not recorded": nothing is written on the way out, so clearing the store is
@@ -2126,6 +2156,192 @@ section('player identity')
   )
 
   resetPlayerCache()
+  resetStorageBackend()
+}
+
+section('pending registrations and the registration flow')
+
+{
+  const backend = new Map<string, string>()
+  configureStorage({
+    getItem: (key) => backend.get(key) ?? null,
+    setItem: (key, value) => {
+      backend.set(key, value)
+    },
+    removeItem: (key) => {
+      backend.delete(key)
+    },
+  })
+
+  const built = buildMatchRecord({
+    outcome: { score: 9, playedSec: 75, endReason: 'death' },
+    durationSec: 120,
+    spawnIntervalMs: 3000,
+    player: { playerId: 'local-player', playerName: 'Captain Test' },
+    matchId: 'e0000000-0000-4000-8000-000000000001',
+    playedAt: '2026-09-20T10:00:00.000Z',
+  })
+
+  check('a finished match becomes a record', built.score === 9 && built.durationMs === 75_000)
+  check(
+    'the record carries the configuration that produced it',
+    built.config.key === 'd120-s3000' && built.config.durationSec === 120,
+  )
+  check(
+    'the record carries the player and the id',
+    built.playerId === 'local-player' &&
+      built.playerName === 'Captain Test' &&
+      built.matchId === 'e0000000-0000-4000-8000-000000000001',
+  )
+
+  clearPending()
+  check('nothing is queued to begin with', orderedPending().length === 0)
+
+  enqueuePending(built)
+  check('queuing writes the match before any request goes out', backend.has(STORAGE_KEYS.pending))
+  check('the queued match can be read back', orderedPending()[0]?.matchId === built.matchId)
+
+  const second = {
+    ...built,
+    matchId: 'e0000000-0000-4000-8000-000000000002',
+    playedAt: '2026-09-20T11:00:00.000Z',
+  }
+  enqueuePending(second)
+  check('the queue is a queue, oldest first', orderedPending()[0]?.matchId === built.matchId)
+
+  removePending(built.matchId)
+  check(
+    'forgetting one match leaves the other waiting',
+    orderedPending().length === 1 && orderedPending()[0]?.matchId === second.matchId,
+  )
+  removePending(second.matchId)
+  check('an empty queue removes the store entirely', !backend.has(STORAGE_KEYS.pending))
+
+  backend.set(STORAGE_KEYS.pending, '{ not json')
+  check('a corrupt queue reads as empty instead of throwing', orderedPending().length === 0)
+
+  // The acceptance case, without a browser: `timeout-after-save` stores the record and then never
+  // answers. Retrying five times must leave exactly one record and, once an answer finally arrives,
+  // an empty queue.
+  clearPending()
+  enqueuePending(built)
+
+  const server: MatchRecord[] = []
+  let attempts = 0
+  const flakyServer = {
+    // A promise, not an `async` function: the rule is right that there is nothing to await here.
+    send: (record: MatchRecord) => {
+      attempts += 1
+      // The server stores it... and then the answer is lost.
+      if (!server.some((item) => item.matchId === record.matchId)) server.push(record)
+      return attempts <= 5
+        ? Promise.reject(new Error('the answer never arrived'))
+        : Promise.resolve({ record, created: true })
+    },
+    list: () => orderedPending(),
+    forget: (matchId: string) => {
+      removePending(matchId)
+    },
+  }
+
+  const lost = await flushPending(flakyServer)
+  check(
+    'a lost answer keeps the match queued',
+    lost.failed.length === 1 && lost.saved.length === 0 && orderedPending().length === 1,
+  )
+  check('the server already has it once', server.length === 1)
+
+  // Four more tries, one at a time — a flush is a queue, not a race.
+  const fourMore: FlushOutcome[] = []
+  for (let i = 0; i < 4; i += 1) fourMore.push(await flushPending(flakyServer))
+  check(
+    'four more retries still leave one record on the server',
+    server.length === 1,
+    `${server.length} record(s) after ${attempts} attempts`,
+  )
+  check(
+    'a retry that does finally fail still keeps the match',
+    fourMore.some((outcome) => outcome.failed.length === 1),
+  )
+  check('the sixth attempt gets an answer', (await flushPending(flakyServer)).saved.length === 1)
+
+  check('the queue is empty once the server has confirmed', orderedPending().length === 0)
+  check('exactly one record exists on the server', server.length === 1)
+  check('six attempts were made, all for the same match', attempts === 6, `${attempts} attempts`)
+
+  // A healthy queue drains completely, and one broken match does not block the next.
+  clearPending()
+  enqueuePending(built)
+  enqueuePending(second)
+
+  const healthy = await flushPending({
+    send: (record: MatchRecord) => Promise.resolve({ record, created: false }),
+    list: () => orderedPending(),
+    forget: (matchId: string) => {
+      removePending(matchId)
+    },
+  })
+  check(
+    'a healthy queue registers everything',
+    healthy.saved.length === 2 && orderedPending().length === 0,
+  )
+
+  clearPending()
+  enqueuePending(built)
+  enqueuePending(second)
+  const partiallyBroken = await flushPending({
+    send: (record: MatchRecord) =>
+      record.matchId === built.matchId
+        ? Promise.reject(new Error('still down'))
+        : Promise.resolve({ record, created: true }),
+    list: () => orderedPending(),
+    forget: (matchId: string) => {
+      removePending(matchId)
+    },
+  })
+  check(
+    'one unreachable match does not stop the one behind it',
+    partiallyBroken.saved.length === 1 && orderedPending()[0]?.matchId === built.matchId,
+  )
+
+  check(
+    'the result screen says "saving" while a request is in flight',
+    registrationStatusFor({
+      isSaving: true,
+      failed: false,
+      hasOutcome: false,
+      savedSomething: false,
+    }) === 'saving',
+  )
+  check(
+    'it says "failed" when the attempt ended badly',
+    registrationStatusFor({
+      isSaving: false,
+      failed: true,
+      hasOutcome: true,
+      savedSomething: false,
+    }) === 'failed',
+  )
+  check(
+    'it says "saved" only once something was actually registered',
+    registrationStatusFor({
+      isSaving: false,
+      failed: false,
+      hasOutcome: true,
+      savedSomething: true,
+    }) === 'saved',
+  )
+  check(
+    'and it says nothing better than "pending" before any outcome',
+    registrationStatusFor({
+      isSaving: false,
+      failed: false,
+      hasOutcome: false,
+      savedSomething: false,
+    }) === 'pending',
+  )
+
+  clearPending()
   resetStorageBackend()
 }
 

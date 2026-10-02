@@ -15,8 +15,14 @@ import { DEFAULT_PAGE_SIZE, type MatchRecord, type Page, type RankingEntry } fro
 export const STALE_TIME_MS = 10_000
 export const RETRY_COUNT = 2
 
-export const rankingKey = (configKey: string, page: number) => ['ranking', configKey, page] as const
-export const historyKey = (playerId: string, page: number) => ['history', playerId, page] as const
+/** Query-key roots. Invalidating a root refetches every page of that resource (plan §1.9). */
+export const RANKING_QUERY_ROOT = ['ranking'] as const
+export const HISTORY_QUERY_ROOT = ['history'] as const
+
+export const rankingKey = (configKey: string, page: number) =>
+  [...RANKING_QUERY_ROOT, configKey, page] as const
+export const historyKey = (playerId: string, page: number) =>
+  [...HISTORY_QUERY_ROOT, playerId, page] as const
 
 export function useRanking(
   configKey: string,

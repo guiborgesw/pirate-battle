@@ -21,7 +21,8 @@ export function endReasonText(reason: MatchEndReason): string {
 }
 
 export function registrationText(registration: MatchRegistration): string {
-  if (registration === 'registered') return 'Registered in the ranking'
-  if (registration === 'offline') return 'Saved offline — will sync later'
-  return 'Not registered yet'
+  if (registration === 'saved') return 'Registered in the ranking'
+  if (registration === 'saving') return 'Registering…'
+  if (registration === 'failed') return 'Not registered yet — will retry'
+  return 'Queued to register'
 }

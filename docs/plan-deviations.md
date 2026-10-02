@@ -143,3 +143,25 @@ Two while implementing M7:
 - **The API client counts requests per endpoint** and exposes the counts through the test hooks. Without
   it, "the tabs refetch when they are shown again" would be an assumption about React Query rather than a
   measurement — the browser run shows the ranking counter going 2 → 3 on a tab switch.
+
+## I. Additions while implementing M12
+
+- **The registration flow is an explicit async routine, not a `useMutation`.** Plan §1.9 describes
+  `useRegisterMatch = useMutation`. A mutation object gets a new identity on every render, so a callback
+  depending on it re-arms any effect that uses it: the first version re-sent the same match on every
+  render, forever, and the mock log filled with PUTs the same second. The flush is now a stable
+  `useCallback` doing one `flushPending` at a time, guarded by a ref.
+- **The result screen's status is derived from the queue, not tracked beside it.** "Still queued" and
+  "not registered yet" are the same question, and the queue is only emptied by the server's own
+  confirmation. The first version kept a parallel per-match map of statuses and sat on "Registering…"
+  while the queue was already empty and the record was already stored — the storage said `saved` and the
+  screen said otherwise, which is exactly the kind of disagreement a second source of truth produces.
+- **`LastMatchResult` gained `matchId`** so a confirmed registration marks exactly the result it belongs
+  to. A result stored by an earlier build (no id) is refused by the parser and shows as "no finished
+  match yet" rather than with a status that belongs to someone else's match.
+- **`e2e/m12-registration.mjs` drives the acceptance in a real browser** (the system's Edge, so no
+  Chromium download): the plan's acceptance is about a queue surviving a browser reload, not about a
+  function returning. Run `pnpm preview` and then `node e2e/m12-registration.mjs`; it prints every
+  measurement it makes. M14's Playwright suite grows out of it.
+- **While a flush is in flight, any match still in the queue reads as "saving".** For a match from an
+  earlier session that is the honest reading of one shared queue, and it lasts seconds.

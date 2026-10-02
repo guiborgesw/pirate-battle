@@ -132,9 +132,21 @@ export default tseslint.config(
       'vite.config.ts',
       'playwright.config.ts',
       'scripts/**/*.ts',
-      'e2e/**/*.ts',
+      'e2e/**/*.{ts,mjs}',
     ],
-    languageOptions: { globals: { ...globals.node } },
+    // Specs and acceptance scripts run in Node, but the callbacks handed to `page.evaluate` are browser
+    // code, so both sets of globals are legitimate here.
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        window: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        KeyboardEvent: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+      },
+    },
   },
   prettier,
 )

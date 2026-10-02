@@ -5,6 +5,7 @@
  * Losing this id would orphan a player's history, so it is written once and never regenerated: if the
  * store is unreadable the id is recreated, but a readable one always wins.
  */
+import { newId } from './ids.ts'
 import { readJson, writeJson } from './localStore.ts'
 
 export type PlayerIdentity = {
@@ -13,20 +14,6 @@ export type PlayerIdentity = {
 }
 
 const NAME_PREFIX = 'Captain'
-
-function randomUuid(): string {
-  const cryptoApi = globalThis.crypto
-  if (typeof cryptoApi.randomUUID === 'function') return cryptoApi.randomUUID()
-
-  // Older browsers: build a v4 by hand from random bytes rather than reaching for Math.random.
-  const bytes = new Uint8Array(16)
-  cryptoApi.getRandomValues(bytes)
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
-
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
 
 export function defaultPlayerName(playerId: string): string {
   return `${NAME_PREFIX} ${playerId.slice(0, 4).toUpperCase()}`
@@ -55,7 +42,7 @@ export function getPlayer(): PlayerIdentity {
     return cached
   }
 
-  const playerId = randomUuid()
+  const playerId = newId()
   const identity: PlayerIdentity = { playerId, playerName: defaultPlayerName(playerId) }
   writeJson('playerId', identity)
   cached = identity

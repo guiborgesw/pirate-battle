@@ -8,13 +8,16 @@
  */
 import { readJson, removeStored, writeJson } from './localStore.ts'
 
-export const MATCH_REGISTRATIONS = ['pending', 'registered', 'offline'] as const
+/** The four states the result screen announces (plan §1.9). */
+export const MATCH_REGISTRATIONS = ['pending', 'saving', 'saved', 'failed'] as const
 export type MatchRegistration = (typeof MATCH_REGISTRATIONS)[number]
 
 export const MATCH_END_REASONS = ['time', 'death'] as const
 export type MatchEndReason = (typeof MATCH_END_REASONS)[number]
 
 export type LastMatchResult = {
+  /** Which match this was, so a registration can be matched back to the result it belongs to. */
+  readonly matchId: string
   readonly score: number
   /** Seconds actually played, so a match cut short by death reports its real length. */
   readonly playedSec: number
@@ -31,8 +34,10 @@ export function parseLastResult(input: unknown): LastMatchResult | undefined {
   if (typeof input !== 'object' || input === null) return undefined
 
   const record = input as Record<string, unknown>
-  const { score, playedSec, durationSec, endReason, registration, finishedAt, configKey } = record
+  const { matchId, score, playedSec, durationSec, endReason, registration, finishedAt, configKey } =
+    record
 
+  if (typeof matchId !== 'string' || matchId.length < 8) return undefined
   if (!isWholeNumber(score) || score < 0) return undefined
   if (!isWholeNumber(playedSec) || playedSec < 0) return undefined
   if (!isWholeNumber(durationSec) || durationSec <= 0) return undefined
@@ -43,7 +48,29 @@ export function parseLastResult(input: unknown): LastMatchResult | undefined {
   if (typeof finishedAt !== 'string' || Number.isNaN(Date.parse(finishedAt))) return undefined
   if (typeof configKey !== 'string' || configKey.length === 0) return undefined
 
-  return { score, playedSec, durationSec, endReason, registration, finishedAt, configKey }
+  return {
+    matchId,
+    score,
+    playedSec,
+    durationSec,
+    endReason,
+    registration,
+    finishedAt,
+    configKey,
+  }
+}
+
+/**
+ * Marks the stored result as registered once the API confirms it (plan §1.9), so the menu's "last match"
+ * line does not keep claiming a match is unregistered after it landed. Matched by id: a flush of older
+ * matches must not rewrite the status of a newer result.
+ */
+export function markResultRegistered(matchId: string): void {
+  const current = loadLastResult()
+  if (current?.matchId !== matchId) return
+  if (current.registration === 'saved') return
+
+  saveLastResult({ ...current, registration: 'saved' })
 }
 
 export function loadLastResult(): LastMatchResult | undefined {
