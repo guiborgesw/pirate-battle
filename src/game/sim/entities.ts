@@ -44,6 +44,18 @@ export type PlayerShip = Ship & {
 
 export type ProjectileOwner = 'player' | 'enemy'
 
+/** Which mount a shot came from; the render layer puts the muzzle flash where the gun is. */
+export type GunMount = 'front' | 'port' | 'starboard'
+
+/**
+ * Why a shot ended. The render layer turns this into the right effect: a splash in the water, dust on
+ * an island, an impact flash on a hull, or nothing at all when the shot simply left the arena.
+ */
+export type ProjectileDeathReason = 'expired' | 'edge' | 'terrain' | 'hit'
+
+/** What caused damage; the session chooses the sound and the effect from this. */
+export type DamageSource = 'player' | 'enemy' | 'ram' | 'self'
+
 export type Projectile = {
   readonly id: number
   readonly owner: ProjectileOwner
@@ -57,5 +69,7 @@ export type Projectile = {
   readonly damage: number
   /** Remaining lifetime in milliseconds; the projectile dies when it reaches zero. */
   lifeMs: number
+  /** Set by whichever rule ends the shot, before `compact()` reports it. */
+  deathReason: ProjectileDeathReason
   alive: boolean
 }

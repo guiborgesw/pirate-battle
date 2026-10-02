@@ -32,6 +32,19 @@
   text-align: center;
 }
 
+/* Last ten seconds: the timer turns amber and pulses with the warning sound. */
+.timeLow {
+  composes: value;
+  color: #ff9d4d;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
 .hpTrack {
   width: 7rem;
   height: 0.85rem;

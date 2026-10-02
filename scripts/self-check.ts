@@ -21,7 +21,7 @@ import { headingToPoint } from '../src/game/sim/systems/ai.ts'
 import { createInputState } from '../src/game/input/InputState.ts'
 import { createKeyboardInput } from '../src/game/input/KeyboardInput.ts'
 import { addEnemy, findBerth } from '../src/game/sim/systems/spawn.ts'
-import { createWorld, stepWorld, type World } from '../src/game/sim/World.ts'
+import { createWorld, stepWorld, type SimEvent, type World } from '../src/game/sim/World.ts'
 import { consumeEvents } from '../src/game/sim/World.ts'
 import { effectiveRangePx } from '../src/game/sim/systems/weapons.ts'
 import {
@@ -65,6 +65,14 @@ import {
   type LastMatchResult,
 } from '../src/storage/lastResult.ts'
 import { endReasonText, formatClock, pointsLabel, registrationText } from '../src/ui/format.ts'
+import {
+  INITIAL_ALERTS,
+  LOW_HEALTH_PERCENT,
+  resolveAlerts,
+  TIME_WARNING_SEC,
+} from '../src/game/audio/alerts.ts'
+import { feedbackForEvent } from '../src/game/render/effects/feedback.ts'
+import { loadAudioSettings, saveAudioSettings } from '../src/storage/audioSettings.ts'
 import { loadOptions, saveOptions } from '../src/storage/settings.ts'
 
 let failures = 0
@@ -860,7 +868,10 @@ const battery = openWater.player.weapons.side
   for (let step = 0; step < 300; step += 1) {
     stepWorld(world, stepMs, everyWeaponIntent)
     peakAlive = Math.max(peakAlive, world.projectiles.length)
-    reported += consumeEvents(world).length
+    // Only removals count here: the step also reports shots and damage, which this check is not about.
+    reported += consumeEvents(world).filter(
+      (event) => event.type === 'entityRemoved' && event.entity === 'projectile',
+    ).length
   }
 
   check(
@@ -1495,6 +1506,257 @@ section('menu text formatting')
       (state) => registrationText(state as 'pending').length > 0,
     ),
   )
+}
+
+section('feedback mapping')
+
+{
+  const shotEvent: SimEvent = {
+    type: 'shotFired',
+    id: 7,
+    owner: 'player',
+    mount: 'front',
+    x: 100,
+    y: 200,
+    headingRad: 0,
+  }
+
+  const shot = feedbackForEvent(shotEvent)
+  const shotEffect = shot?.effects[0]
+  const shotKind = shotEffect?.kind
+  const { x: shotX, y: shotY } = shotEffect ?? { x: 0, y: 0 }
+  check(
+    'a shot puts smoke and a flash where the gun is',
+    shotKind === 'muzzle' && shotX === 100 && shotY === 200,
+  )
+  check(
+    'a shot is heard as a cannon',
+    shot?.sounds[0]?.key.startsWith('cannon_fire') === true,
+    shot?.sounds[0]?.key,
+  )
+  check(
+    'the same shot always sounds the same',
+    feedbackForEvent(shotEvent)?.sounds[0]?.key === shot?.sounds[0]?.key,
+  )
+
+  const broadside = feedbackForEvent({ ...shotEvent, mount: 'port' })
+  check(
+    'a broadside uses the broadside recording',
+    broadside?.sounds[0]?.key === 'cannon_broadside',
+  )
+
+  const kill = feedbackForEvent({
+    type: 'damage',
+    target: 'enemy',
+    targetId: 4,
+    x: 10,
+    y: 20,
+    amount: 34,
+    lethal: true,
+    source: 'player',
+  })
+  check('a kill explodes the hull', kill?.effects[0]?.kind === 'explosion')
+  check(
+    'a kill the player caused is announced with a sound',
+    kill?.sounds.some((sound) => sound.key === 'score_point') === true,
+  )
+  check(
+    'the wreck is heard sinking after the blast',
+    kill?.sounds.some((sound) => sound.key === 'ship_sinking' && (sound.delayMs ?? 0) > 0) === true,
+  )
+
+  const ownDeath = feedbackForEvent({
+    type: 'damage',
+    target: 'player',
+    targetId: 1,
+    x: 0,
+    y: 0,
+    amount: 120,
+    lethal: true,
+    source: 'enemy',
+  })
+  check(
+    'the player going down has its own blast and match-over sound',
+    ownDeath?.sounds[0]?.key === 'ship_explosion_2' &&
+      ownDeath.sounds.some((sound) => sound.key === 'game_over'),
+  )
+
+  const hit = feedbackForEvent({
+    type: 'damage',
+    target: 'enemy',
+    targetId: 4,
+    x: 0,
+    y: 0,
+    amount: 12,
+    lethal: false,
+    source: 'player',
+  })
+  check(
+    'a hit that does not kill shows an impact and sounds like wood',
+    hit?.effects[0]?.kind === 'impact' && hit.sounds[0]?.key.startsWith('ship_wood_hit') === true,
+  )
+
+  const ram = feedbackForEvent({
+    type: 'damage',
+    target: 'player',
+    targetId: 1,
+    x: 0,
+    y: 0,
+    amount: 25,
+    lethal: false,
+    source: 'ram',
+  })
+  check('a Chaser ramming is heard as a collision', ram?.sounds[0]?.key === 'ship_collision')
+
+  const splash = feedbackForEvent({
+    type: 'entityRemoved',
+    entity: 'projectile',
+    id: 3,
+    x: 40,
+    y: 50,
+    owner: 'player',
+    reason: 'expired',
+  })
+  check(
+    'a shot out of range splashes into the sea',
+    splash?.effects[0]?.kind === 'splash' &&
+      splash.sounds[0]?.key.startsWith('cannonball_water_hit') === true,
+  )
+  const splashEffect = splash?.effects[0]
+  const { x: splashX, y: splashY } = splashEffect ?? { x: 0, y: 0 }
+  check('the splash marks where the shot fell', splashX === 40 && splashY === 50)
+
+  check(
+    'a shot stopped by an island leaves dust',
+    feedbackForEvent({
+      type: 'entityRemoved',
+      entity: 'projectile',
+      id: 4,
+      x: 0,
+      y: 0,
+      owner: 'player',
+      reason: 'terrain',
+    })?.effects[0]?.kind === 'dust',
+  )
+  check(
+    'a shot leaving the arena shows nothing',
+    feedbackForEvent({
+      type: 'entityRemoved',
+      entity: 'projectile',
+      id: 5,
+      x: 0,
+      y: 0,
+      owner: 'player',
+      reason: 'edge',
+    }) === undefined,
+  )
+  // The damage event already drew the impact; a second effect on the removal would double it.
+  check(
+    'a shot that hit a hull does not also splash',
+    feedbackForEvent({
+      type: 'entityRemoved',
+      entity: 'projectile',
+      id: 6,
+      x: 0,
+      y: 0,
+      owner: 'player',
+      reason: 'hit',
+    }) === undefined,
+  )
+  check(
+    'an enemy removal does not explode twice',
+    feedbackForEvent({
+      type: 'entityRemoved',
+      entity: 'enemy',
+      id: 9,
+      x: 0,
+      y: 0,
+      killedBy: 'player',
+    }) === undefined,
+  )
+}
+
+section('one-shot warnings')
+
+{
+  const calm = { hpPercent: 100, remainingSec: 120, running: true }
+
+  check(
+    'nothing is announced while hull and clock are healthy',
+    resolveAlerts(INITIAL_ALERTS, calm).sounds.length === 0,
+  )
+
+  const low = resolveAlerts(INITIAL_ALERTS, { ...calm, hpPercent: LOW_HEALTH_PERCENT })
+  check('the low-hull alarm fires at the damaged tier', low.sounds.includes('health_low'))
+  check(
+    'the low-hull alarm does not repeat',
+    !resolveAlerts(low.next, { ...calm, hpPercent: 20 }).sounds.includes('health_low'),
+  )
+
+  const ten = resolveAlerts(INITIAL_ALERTS, { ...calm, remainingSec: TIME_WARNING_SEC })
+  check('the ten-second warning fires', ten.sounds.includes('time_warning'))
+  check(
+    'the ten-second warning fires only once',
+    !resolveAlerts(ten.next, { ...calm, remainingSec: 9 }).sounds.includes('time_warning'),
+  )
+
+  check(
+    'a paused match warns about nothing',
+    resolveAlerts(INITIAL_ALERTS, { ...calm, hpPercent: 5, remainingSec: 3, running: false }).sounds
+      .length === 0,
+  )
+  check(
+    'a repaired hull re-arms the alarm',
+    !resolveAlerts({ lowHealthPlayed: true, timeWarningPlayed: true }, { ...calm, hpPercent: 80 })
+      .next.lowHealthPlayed,
+  )
+}
+
+section('the simulation reports what the feedback needs')
+
+{
+  const world = createWorld({ config: withoutSpawns(testConfig), seed: 5 })
+  const player = world.player
+
+  stepWorld(world, stepMs, { ...EMPTY_INTENT, fireFront: true })
+  const reported = consumeEvents(world)
+  const shot = reported.find((event) => event.type === 'shotFired')
+
+  check(
+    'firing reports the mount the shot left from',
+    shot?.type === 'shotFired' && shot.mount === 'front',
+  )
+  check('the shot is reported with its own id', shot !== undefined && Number.isInteger(shot.id))
+  check(
+    'the muzzle point sits ahead of the hull, not at its centre',
+    shot !== undefined &&
+      gapBetween(shot, player) >= testConfig.player.weapons.front.muzzleOffsetPx - 1,
+    shot === undefined ? 'no shot event' : gapBetween(shot, player).toFixed(1),
+  )
+}
+
+section('audio settings')
+
+{
+  const backend = new Map<string, string>()
+  configureStorage({
+    getItem: (key) => backend.get(key) ?? null,
+    setItem: (key, value) => {
+      backend.set(key, value)
+    },
+    removeItem: (key) => {
+      backend.delete(key)
+    },
+  })
+
+  check('sound is on until the player says otherwise', !loadAudioSettings().muted)
+  check('muting is saved', saveAudioSettings({ muted: true }))
+  check('the mute survives a reload', loadAudioSettings().muted)
+
+  backend.set(STORAGE_KEYS.audio, '{ not json')
+  check('a corrupt sound setting falls back to sound on', !loadAudioSettings().muted)
+
+  resetStorageBackend()
 }
 
 section('ship art orientation')

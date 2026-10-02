@@ -1,4 +1,5 @@
 import type { HudSnapshot } from '../../game/GameSession.ts'
+import { TIME_WARNING_SEC } from '../../game/audio/alerts.ts'
 import { formatClock } from '../format.ts'
 import { PauseDialog } from './PauseDialog.tsx'
 import { noteHudRender } from './renderCounter.ts'
@@ -64,7 +65,12 @@ export function Hud({ snapshot, onExit, onPause, onResume }: HudProps) {
           width={24}
           height={24}
         />
-        <span className={styles.value} data-testid="hud-time">
+        <span
+          // The same constant that fires the ten-second warning also lights the timer, so the sound
+          // and the highlight can never disagree about when the end is close.
+          className={snapshot.remainingSec <= TIME_WARNING_SEC ? styles.timeLow : styles.value}
+          data-testid="hud-time"
+        >
           {formatClock(snapshot.remainingSec)}
         </span>
         {/* M13 replaces this region with throttled announcements (score changes, 30 s marks, 10 s). */}

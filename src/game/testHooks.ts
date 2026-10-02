@@ -5,6 +5,8 @@
  * Installed when `import.meta.env.MODE === 'test'` or when the URL carries `?testHooks=1`
  * (which is how the production build is exercised), exposing `window.__pb`.
  */
+import type { AudioState } from './audio/AudioEngine.ts'
+import { getAudio } from './audio/audio.ts'
 import type {
   EndReason,
   ProjectileState,
@@ -12,6 +14,7 @@ import type {
   SessionStatus,
 } from './GameSession.ts'
 import { liveSessionCount } from './GameSession.ts'
+import type { EffectKind } from './render/effects/EffectsLayer.ts'
 import { getCurrentSession } from './sessionRegistry.ts'
 import { hudRenderCount } from '../ui/hud/renderCounter.ts'
 
@@ -59,6 +62,10 @@ export type PbTestHooks = {
   getRemainingMs(): number
   /** How many times the HUD React component has rendered — the "not every frame" measurement. */
   getHudRenders(): number
+  /** Audio health: what played, what was dropped while locked, which loops are running. */
+  getAudio(): AudioState
+  /** Effects alive right now, by kind or in total. */
+  getEffects(kind?: EffectKind): number
   /** Drops an enemy at a fixed spot, so a test can stage a fight without waiting for the schedule. */
   spawnEnemy(kind: 'chaser' | 'shooter', x: number, y: number): number
   setSeed(n: number): void
@@ -170,6 +177,13 @@ export function createTestHooks(): PbTestHooks {
     },
 
     getHudRenders: hudRenderCount,
+    getAudio(): AudioState {
+      // With no match running the engine still exists, so report the device rather than a pretend one.
+      return getCurrentSession()?.getAudioState() ?? getAudio().getState()
+    },
+    getEffects(kind?: EffectKind): number {
+      return getCurrentSession()?.getEffectCount(kind) ?? 0
+    },
 
     spawnEnemy(kind, x, y): number {
       return getCurrentSession()?.spawnEnemy(kind, x, y) ?? -1

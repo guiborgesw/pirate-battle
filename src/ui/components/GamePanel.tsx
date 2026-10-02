@@ -54,16 +54,24 @@ export type ButtonProps = {
   readonly nowrap?: boolean
   readonly testId?: string
   readonly ariaDescribedBy?: string
+  readonly ariaPressed?: boolean
   readonly onClick?: () => void
 }
 
-export function PrimaryButton({ children, testId, ariaDescribedBy, onClick }: ButtonProps) {
+export function PrimaryButton({
+  children,
+  testId,
+  ariaDescribedBy,
+  ariaPressed,
+  onClick,
+}: ButtonProps) {
   return (
     <button
       className={styles.primary}
       type="button"
       data-testid={testId}
       aria-describedby={ariaDescribedBy}
+      aria-pressed={ariaPressed}
       onClick={onClick}
     >
       {children}
@@ -71,13 +79,20 @@ export function PrimaryButton({ children, testId, ariaDescribedBy, onClick }: Bu
   )
 }
 
-export function SecondaryButton({ children, testId, ariaDescribedBy, onClick }: ButtonProps) {
+export function SecondaryButton({
+  children,
+  testId,
+  ariaDescribedBy,
+  ariaPressed,
+  onClick,
+}: ButtonProps) {
   return (
     <button
       className={styles.secondary}
       type="button"
       data-testid={testId}
       aria-describedby={ariaDescribedBy}
+      aria-pressed={ariaPressed}
       onClick={onClick}
     >
       {children}

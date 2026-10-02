@@ -78,6 +78,7 @@ export function projectileIslandSystem(world: World): void {
         minimumDistance * minimumDistance
       ) {
         projectile.alive = false
+        projectile.deathReason = 'terrain'
         break
       }
     }

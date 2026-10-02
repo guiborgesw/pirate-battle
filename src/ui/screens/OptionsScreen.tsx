@@ -9,8 +9,16 @@ import {
   type OptionKey,
 } from '../../config/optionsSchema.ts'
 import { readJson } from '../../storage/localStore.ts'
+import { loadAudioSettings, saveAudioSettings } from '../../storage/audioSettings.ts'
 import { loadOptions, saveOptions } from '../../storage/settings.ts'
-import { GamePanel, PrimaryButton, RoundButton, ScreenTitle } from '../components/GamePanel.tsx'
+import { getAudio } from '../../game/audio/audio.ts'
+import {
+  GamePanel,
+  PrimaryButton,
+  RoundButton,
+  ScreenTitle,
+  SecondaryButton,
+} from '../components/GamePanel.tsx'
 import styles from './OptionsScreen.module.css'
 
 export type OptionsScreenProps = {
@@ -44,6 +52,7 @@ const FIELDS: readonly {
  */
 export function OptionsScreen({ onBack }: OptionsScreenProps) {
   const [options, setOptions] = useState<GameOptions>(() => loadOptions())
+  const [muted, setMuted] = useState(() => loadAudioSettings().muted)
   const [status, setStatus] = useState('')
   const [warning] = useState<string | undefined>(() => {
     const stored = readJson('options')
@@ -78,6 +87,20 @@ export function OptionsScreen({ onBack }: OptionsScreenProps) {
       saveOptions(updated)
         ? `Saved ${label}: ${formatOptionValue(key, next)}.`
         : `This browser refused to save ${label}; the value applies to this session only.`,
+    )
+  }
+
+  /** Mute lives here but not in the gameplay options: it is a device setting, not a session parameter. */
+  const toggleMute = (): void => {
+    const next = !muted
+    setMuted(next)
+    getAudio().setMuted(next)
+    setStatus(
+      saveAudioSettings({ muted: next })
+        ? next
+          ? 'Sound muted.'
+          : 'Sound on.'
+        : 'This browser refused to save the sound setting.',
     )
   }
 
@@ -126,6 +149,10 @@ export function OptionsScreen({ onBack }: OptionsScreenProps) {
       </p>
 
       <p className={styles.note}>Each match uses the options in force when it starts.</p>
+
+      <SecondaryButton testId="toggle-sound" ariaPressed={muted} onClick={toggleMute}>
+        Sound: {muted ? 'off' : 'on'}
+      </SecondaryButton>
 
       <PrimaryButton testId="options-back" onClick={onBack}>
         Main menu

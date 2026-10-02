@@ -338,6 +338,47 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   session, an unknown ending and an unparseable timestamp are all refused rather than displayed as
   fact. The browser run confirms the same round trip against real `localStorage`.
 
+## Feedback and audio (M10)
+
+- **The simulation reports; the render draws; the audio plays.** Every effect is driven by an event,
+  and the events carry enough payload that neither layer ever re-derives simulation geometry: a shot
+  reports the mount and the exact muzzle point, a projectile removal reports where it died and why
+  (`expired`, `edge`, `terrain`, `hit`), damage reports where it landed and whether it killed, and an
+  enemy removal reports `killedBy`. `render/effects/feedback.ts` turns each event into effect and sound
+  requests — pure, so the whole mapping is asserted in `pnpm self-check` with no Pixi and no device.
+- **No effect is drawn twice.** A shot that hit a hull reports both a damage event and a removal with
+  reason `hit`; the damage event draws the impact and the removal deliberately draws nothing. The same
+  rule keeps a destroyed ship from exploding twice, once for the lethal damage and once for the
+  removal.
+- **The composed effects.** The pack ships explosion and fire sprites but has no smoke and no splash,
+  so the muzzle puff and the water splash are `Graphics` primitives (a puff that expands and fades, a
+  fan of droplets with a ring on the water) and everything else is a sprite. Measuring the art decided
+  one detail: `fire_1`/`fire_2` taper from 2 px at the top to 18 px at the base, so the flame's tip is
+  up and needs **no** rotation offset — unlike the hull sprites, which are drawn bow-down and carry
+  `ART_FACING_OFFSET_RAD`.
+- **Effects advance on `simTimeMs`**, not on wall time: the loop already reports it, the manual test
+  clock drives it, and a tab that was hidden for a minute cannot make every pooled effect jump to the
+  end of its life in one frame (the delta is clamped like the loop's own frame budget). Effects are
+  pooled by kind and `getEffects(kind)` counts them, which is how "every hit produces visible feedback"
+  became a measurement instead of a claim.
+
+* **Audio starts only from a gesture.** No `AudioContext` exists before the first pointer or key press;
+  requests that arrive earlier are counted as `droppedWhileLocked` and dropped silently, which is
+  exactly the acceptance ("no audio errors when the tab lacks user gesture"). Buffers come from the
+  loader already fetched as raw `ArrayBuffer`s and the match factory **awaits the decode** before the
+  session exists — without that await the first `game_start` and both loops vanished in silence
+  (`plays: {}` with zero drops, which is why the "buffer not ready" path now has its own counter). The
+  same sound fired twice inside 45 ms is one event — a broadside is a volley, and three stacked cannon
+  blasts is noise.
+
+- **One-shot warnings are pure functions.** `resolveAlerts` owns "once per match" for the low-hull
+  alarm (with hysteresis, so a future repair re-arms it) and the ten-second warning. It never fires
+  while paused or finished. The HUD highlight uses the same `TIME_WARNING_SEC` constant, so the sound
+  and the amber timer can never disagree about when the end is close.
+- **Mute is a device setting, not a session parameter.** It lives in its own store (`pb.audio.v1`)
+  rather than in the gameplay options, is applied to the master gain the moment the engine is built,
+  and is toggled from Options with `aria-pressed`.
+
 ## Pending sections
 
 The API layer (M11) and the mock scenarios (M12) are filled in as those milestones land.

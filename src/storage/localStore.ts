@@ -6,11 +6,12 @@
  * Keys follow `pb.<name>.v1`; bumping the suffix retires old data instead of migrating it.
  */
 
-export type StorageKey = 'options' | 'lastResult' | 'playerId' | 'pending' | 'mockDb'
+export type StorageKey = 'options' | 'lastResult' | 'audio' | 'playerId' | 'pending' | 'mockDb'
 
 export const STORAGE_KEYS: Record<StorageKey, string> = {
   options: 'pb.options.v1',
   lastResult: 'pb.lastResult.v1',
+  audio: 'pb.audio.v1',
   playerId: 'pb.playerId.v1',
   pending: 'pb.pending.v1',
   mockDb: 'pb.mockdb.v1',

@@ -9,7 +9,17 @@ import type { Circle, GameConfig, IslandDefinition } from '../../config/gameConf
 import { createRng, type Rng } from '../core/Rng.ts'
 import { MS_PER_SECOND } from '../core/math.ts'
 import type { ShipIntent } from '../core/intents.ts'
-import type { EnemyShip, PlayerShip, Projectile, Ship } from './entities.ts'
+import type {
+  DamageSource,
+  EnemyShip,
+  GunMount,
+  KilledBy,
+  PlayerShip,
+  Projectile,
+  ProjectileDeathReason,
+  ProjectileOwner,
+  Ship,
+} from './entities.ts'
 import { aiSystem } from './systems/ai.ts'
 import { chaserContactSystem, projectileImpactSystem } from './systems/combat.ts'
 import { islandCollisionSystem, projectileIslandSystem } from './systems/collision.ts'
@@ -24,9 +34,49 @@ export type IslandCircle = Circle & {
   readonly variant: number
 }
 
+/**
+ * Everything the step reports to the outside world. The events carry enough payload for the render
+ * and audio layers to place effects exactly — where a shot left the gun, where it ended and why,
+ * where damage landed and whether it killed — so neither layer has to re-derive sim geometry.
+ */
 export type SimEvent =
-  | { readonly type: 'entityRemoved'; readonly entity: 'projectile'; readonly id: number }
-  | { readonly type: 'entityRemoved'; readonly entity: 'enemy'; readonly id: number }
+  | {
+      readonly type: 'entityRemoved'
+      readonly entity: 'projectile'
+      readonly id: number
+      readonly x: number
+      readonly y: number
+      readonly owner: ProjectileOwner
+      readonly reason: ProjectileDeathReason
+    }
+  | {
+      readonly type: 'entityRemoved'
+      readonly entity: 'enemy'
+      readonly id: number
+      readonly x: number
+      readonly y: number
+      readonly killedBy: KilledBy | undefined
+    }
+  | {
+      readonly type: 'shotFired'
+      /** Id of the shot that was created; the feedback layer picks its sound variant from it. */
+      readonly id: number
+      readonly owner: ProjectileOwner
+      readonly mount: GunMount
+      readonly x: number
+      readonly y: number
+      readonly headingRad: number
+    }
+  | {
+      readonly type: 'damage'
+      readonly target: 'player' | 'enemy'
+      readonly targetId: number
+      readonly x: number
+      readonly y: number
+      readonly amount: number
+      readonly lethal: boolean
+      readonly source: DamageSource
+    }
 
 export type World = {
   readonly config: Readonly<GameConfig>
@@ -134,23 +184,52 @@ export function capturePreviousTransforms(world: World): void {
   }
 }
 
-type Removable = { readonly id: number; alive: boolean }
-
 /**
- * Removes dead entities in place and reports each one. Compacting once, at the end of the step,
- * means no system ever holds a stale array index, and the reported ids let the renderer release
- * pooled views exactly once.
+ * Removes dead projectiles in place and reports each one with the place and reason it died, so the
+ * render layer can put a splash, a puff of dust or nothing at all exactly where it belongs.
  */
-function compactList(list: Removable[], entity: 'projectile' | 'enemy', events: SimEvent[]): void {
+function compactProjectiles(list: Projectile[], events: SimEvent[]): void {
   let write = 0
 
-  for (const item of list) {
-    if (!item.alive) {
-      events.push({ type: 'entityRemoved', entity, id: item.id })
+  for (const projectile of list) {
+    if (!projectile.alive) {
+      events.push({
+        type: 'entityRemoved',
+        entity: 'projectile',
+        id: projectile.id,
+        x: projectile.x,
+        y: projectile.y,
+        owner: projectile.owner,
+        reason: projectile.deathReason,
+      })
       continue
     }
 
-    list[write] = item
+    list[write] = projectile
+    write += 1
+  }
+
+  list.length = write
+}
+
+/** Same, for the ships: the position is where the explosion goes, `killedBy` decides the score sound. */
+function compactEnemies(list: EnemyShip[], events: SimEvent[]): void {
+  let write = 0
+
+  for (const enemy of list) {
+    if (!enemy.alive) {
+      events.push({
+        type: 'entityRemoved',
+        entity: 'enemy',
+        id: enemy.id,
+        x: enemy.x,
+        y: enemy.y,
+        killedBy: enemy.killedBy,
+      })
+      continue
+    }
+
+    list[write] = enemy
     write += 1
   }
 
@@ -159,8 +238,8 @@ function compactList(list: Removable[], entity: 'projectile' | 'enemy', events: 
 
 /** The single removal point of the step. */
 export function compact(world: World): void {
-  compactList(world.projectiles, 'projectile', world.events)
-  compactList(world.enemies, 'enemy', world.events)
+  compactProjectiles(world.projectiles, world.events)
+  compactEnemies(world.enemies, world.events)
 }
 
 /** Hands the accumulated events to the caller and starts a fresh batch. */

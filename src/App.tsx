@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { installAudioUnlock } from './game/audio/audio.ts'
+
 import { configKey, createMatchConfig, type GameConfig } from './config/gameConfig.ts'
 import type { MatchOutcome } from './game/GameSession.ts'
 import { createTestHooks, installTestHooks, testHooksEnabled } from './game/testHooks.ts'
@@ -31,6 +33,9 @@ export default function App() {
   const [lastResult, setLastResult] = useState<LastMatchResult | undefined>(() => loadLastResult())
 
   useEffect(() => {
+    // The browser only lets audio start from a user gesture; this arms that first gesture (spec §2).
+    installAudioUnlock()
+
     if (!testHooksEnabled(window.location.search, import.meta.env.MODE)) return
     installTestHooks(createTestHooks())
   }, [])

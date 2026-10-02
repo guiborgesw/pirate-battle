@@ -3,18 +3,24 @@
  *
  * A shot dies of old age (`lifeMs`), when it leaves the arena, or when it touches an island — the
  * island check lives in `collision.ts`, next to the ship-vs-island rule. A projectile that dies sets
- * `alive = false` immediately so nothing else in the same step can still act on it (a shot can never
- * damage twice), and `compact()` in `World.ts` removes it at the end of the step.
+ * `alive = false` and records *why* in `deathReason` immediately, so nothing else in the same step can
+ * still act on it (a shot can never damage twice) and the render layer knows which effect belongs to
+ * that spot. `compact()` in `World.ts` removes it at the end of the step and reports it.
  *
- * Damage is applied by the health system in M7: M6 delivers flying shots with the rules that end
- * them, which is exactly what this milestone's acceptance asks for.
+ * Creating a shot also reports a `shotFired` event with the exact muzzle point and heading, because
+ * the muzzle flash, the smoke puff and the cannon sound all belong where the gun actually is — the
+ * render layer should never have to re-derive that geometry.
+ *
+ * Damage is applied by the impact system in `combat.ts`.
  */
 import { MS_PER_SECOND } from '../../core/math.ts'
-import type { Projectile, ProjectileOwner } from '../entities.ts'
+import type { GunMount, Projectile, ProjectileOwner } from '../entities.ts'
 import type { World } from '../World.ts'
 
 export type ProjectileSpawn = {
   readonly owner: ProjectileOwner
+  readonly mount: GunMount
+  readonly headingRad: number
   readonly x: number
   readonly y: number
   readonly vx: number
@@ -37,12 +43,24 @@ export function spawnProjectile(world: World, spawn: ProjectileSpawn): Projectil
     radius: spawn.radius,
     damage: spawn.damage,
     lifeMs: spawn.lifeMs,
+    deathReason: 'expired',
     alive: true,
   }
 
   world.nextEntityId += 1
   if (spawn.owner === 'player') world.shotsFired += 1
   world.projectiles.push(projectile)
+
+  world.events.push({
+    type: 'shotFired',
+    id: projectile.id,
+    owner: spawn.owner,
+    mount: spawn.mount,
+    x: spawn.x,
+    y: spawn.y,
+    headingRad: spawn.headingRad,
+  })
+
   return projectile
 }
 
@@ -61,6 +79,10 @@ export function projectilesSystem(world: World, dtMs: number): void {
     const outside =
       projectile.x < 0 || projectile.y < 0 || projectile.x > width || projectile.y > height
 
-    if (outside || projectile.lifeMs <= 0) projectile.alive = false
+    if (outside || projectile.lifeMs <= 0) {
+      projectile.alive = false
+      // A shot that ran out of range falls into the sea; one that left the arena is simply gone.
+      projectile.deathReason = outside ? 'edge' : 'expired'
+    }
   }
 }

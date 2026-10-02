@@ -125,6 +125,8 @@ function fireIfOnTarget(world: World, enemy: EnemyShip, toTarget: number): void 
   const forward = headingToVector(enemy.rotation)
   spawnProjectile(world, {
     owner: 'enemy',
+    mount: 'front',
+    headingRad: enemy.rotation,
     x: enemy.x + forward.x * shooter.weapon.muzzleOffsetPx,
     y: enemy.y + forward.y * shooter.weapon.muzzleOffsetPx,
     vx: forward.x * shooter.weapon.projectileSpeed,

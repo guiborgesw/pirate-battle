@@ -5,11 +5,11 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M9 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> **Status:** M1–M10 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
-> the match clock with pause/end/restart, and the menu, options and result screens with persistence.
-> The ranking and history APIs arrive with M11/M12; the milestone map is in
+> the match clock with pause/end/restart, the menu, options and result screens with persistence, and
+> combat feedback with sound. The ranking and history APIs arrive with M11/M12; the milestone map is in
 > [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
 > [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
@@ -102,9 +102,20 @@ The menu, options and result screens are built from the UI atlas (`panel_menu`,
 `title_pirate_battle`, `button_primary_*`, `button_secondary_*`, `button_round_*` and the control
 icons) over `ui_scene_background.png`, matching the challenge mockups.
 
-## Controls
+## Feedback and audio
 
-Sail and guns are implemented (M5–M6); touch controls arrive with M13.
+Every hit shows something: a muzzle puff and flash where the gun actually is, a splash where a shot
+falls into the sea, dust on a rock, an impact flash on a hull, and a staged explosion with lingering
+fire when a ship goes down. Hulls also change art at 66% and 33% hull (M7), the timer turns amber and
+the alarm sounds in the last ten seconds, and the low-hull alarm fires once per match.
+
+All sound comes from `assets/sounds`: cannon fire (bow and broadside recordings), wood hits, water
+hits, explosions, sinking, scoring, collisions, match start and end, and the ocean ambience that runs
+under a match with a sailing loop that rises only while the hull is moving. Browsers do not allow audio
+before a user gesture, so the engine waits for your first click or key press and drops — silently and
+counted — anything asked for earlier. The mute toggle is in Options and is remembered.
+
+## Controls
 
 | Action                      | Keyboard             | Touch (M13)                      |
 | --------------------------- | -------------------- | -------------------------------- |

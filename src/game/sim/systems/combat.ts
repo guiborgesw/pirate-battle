@@ -7,9 +7,13 @@
  * - a destroyed enemy stops firing, damaging and colliding (it is removed by the step's `compact()`);
  * - the score moves only for kills the player caused. A Chaser that blows itself up against the
  *   player's hull scores nothing — `killedBy` is what separates those two cases.
+ *
+ * Every application of damage is reported as an event carrying where it landed, how much it was and
+ * whether it killed. The session turns those into hit flashes and sounds; the sim itself stays silent
+ * and never touches a canvas or an audio device (spec §4).
  */
 import { distanceSquared } from '../../core/math.ts'
-import type { EnemyShip, KilledBy, Projectile } from '../entities.ts'
+import type { DamageSource, EnemyShip, KilledBy, Projectile } from '../entities.ts'
 import type { World } from '../World.ts'
 
 type Circle = { readonly x: number; readonly y: number; readonly radius: number }
@@ -25,6 +29,7 @@ export function projectileImpactSystem(world: World): void {
       if (target === undefined) continue
 
       projectile.alive = false
+      projectile.deathReason = 'hit'
       damageEnemy(world, target, projectile.damage, 'player')
       continue
     }
@@ -32,7 +37,8 @@ export function projectileImpactSystem(world: World): void {
     if (!player.alive || !overlaps(projectile, player)) continue
 
     projectile.alive = false
-    damagePlayer(world, projectile.damage)
+    projectile.deathReason = 'hit'
+    damagePlayer(world, projectile.damage, 'enemy')
   }
 }
 
@@ -45,7 +51,7 @@ export function chaserContactSystem(world: World): void {
     if (!enemy.alive || enemy.kind !== 'chaser') continue
     if (!overlaps(enemy, player)) continue
 
-    damagePlayer(world, world.config.chaser.contactDamage)
+    damagePlayer(world, world.config.chaser.contactDamage, 'ram')
     killEnemy(world, enemy, 'self')
   }
 }
@@ -64,9 +70,21 @@ function overlaps(a: Circle, b: Circle): boolean {
   return distanceSquared(a.x, a.y, b.x, b.y) <= reach * reach
 }
 
-function damageEnemy(world: World, enemy: EnemyShip, amount: number, source: KilledBy): void {
+function damageEnemy(world: World, enemy: EnemyShip, amount: number, source: DamageSource): void {
   enemy.hp = Math.max(0, enemy.hp - amount)
-  if (enemy.hp === 0) killEnemy(world, enemy, source)
+
+  world.events.push({
+    type: 'damage',
+    target: 'enemy',
+    targetId: enemy.id,
+    x: enemy.x,
+    y: enemy.y,
+    amount,
+    lethal: enemy.hp === 0,
+    source,
+  })
+
+  if (enemy.hp === 0) killEnemy(world, enemy, source === 'player' ? 'player' : 'self')
 }
 
 function killEnemy(world: World, enemy: EnemyShip, killedBy: KilledBy): void {
@@ -77,9 +95,20 @@ function killEnemy(world: World, enemy: EnemyShip, killedBy: KilledBy): void {
   if (killedBy === 'player') world.score += 1
 }
 
-function damagePlayer(world: World, amount: number): void {
+function damagePlayer(world: World, amount: number, source: DamageSource): void {
   const player = world.player
   player.hp = Math.max(0, player.hp - amount)
+
+  world.events.push({
+    type: 'damage',
+    target: 'player',
+    targetId: player.id,
+    x: player.x,
+    y: player.y,
+    amount,
+    lethal: player.hp === 0,
+    source,
+  })
 
   // Ending the match on death is M8's rule. Until then a wrecked ship simply stops sailing, shooting
   // and counting as a target: every system checks `alive`, and nothing removes the player from the

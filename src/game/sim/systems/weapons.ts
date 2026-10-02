@@ -42,6 +42,8 @@ export function fireFront(world: World, player: PlayerShip, stats: WeaponStats):
 
   spawnProjectile(world, {
     owner: 'player',
+    mount: 'front',
+    headingRad: player.rotation,
     x: player.x + forward.x * stats.muzzleOffsetPx,
     y: player.y + forward.y * stats.muzzleOffsetPx,
     vx: forward.x * stats.projectileSpeed,
@@ -69,6 +71,8 @@ export function fireBroadside(
 
     spawnProjectile(world, {
       owner: 'player',
+      mount: flank === PORT ? 'port' : 'starboard',
+      headingRad: player.rotation,
       x: player.x + starboard.x * flank * stats.muzzleOffsetPx + forward.x * alongHull,
       y: player.y + starboard.y * flank * stats.muzzleOffsetPx + forward.y * alongHull,
       vx: starboard.x * flank * stats.projectileSpeed,

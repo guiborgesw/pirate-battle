@@ -21,7 +21,16 @@ import {
 } from './core/FixedStepLoop.ts'
 import { createInputState, type InputState } from './input/InputState.ts'
 import { createKeyboardInput, type KeyboardInput } from './input/KeyboardInput.ts'
+import type { AudioState, LoopHandle } from './audio/AudioEngine.ts'
+import { INITIAL_ALERTS, resolveAlerts, type AlertState } from './audio/alerts.ts'
+import { getAudio, type AudioEngine } from './audio/audio.ts'
 import { createRenderer, type Renderer } from './render/Renderer.ts'
+import {
+  createEffectsLayer,
+  type EffectKind,
+  type EffectsLayer,
+} from './render/effects/EffectsLayer.ts'
+import { feedbackForEvent } from './render/effects/feedback.ts'
 import { createArenaBackground } from './render/views/ArenaBackground.ts'
 import { createIslandView, type IslandView } from './render/views/IslandView.ts'
 import { createHealthBarView, type HealthBarView } from './render/views/HealthBarView.ts'
@@ -33,7 +42,7 @@ import {
 import { createShipView, type ShipView } from './render/views/ShipView.ts'
 import type { EnemyShip, Ship } from './sim/entities.ts'
 import { addEnemy } from './sim/systems/spawn.ts'
-import { consumeEvents, createWorld, stepWorld, type World } from './sim/World.ts'
+import { consumeEvents, createWorld, stepWorld, type SimEvent, type World } from './sim/World.ts'
 
 /** Cannonball frame in the ships sheet (10x10, so a logical radius of 5). */
 export const CANNON_BALL_FRAME = 'cannon_ball'
@@ -155,6 +164,11 @@ function tickerScheduler(app: { ticker: Ticker }): LoopScheduler {
 export class GameSession {
   static async create(options: GameSessionOptions): Promise<GameSession> {
     const renderer = await createRenderer({ host: options.host, size: options.config.arena })
+
+    // Decoding the 27 sounds takes a moment; awaiting it here means the first shot of the first
+    // match already has its buffer, instead of being dropped in silence by a decode still in flight.
+    await getAudio().setBuffers(options.assets.sounds)
+
     return new GameSession(options, renderer)
   }
 
@@ -176,6 +190,20 @@ export class GameSession {
   private readonly projectileViews: ProjectileViews
   /** Bars sit above every other world object and never rotate with the hull. */
   private readonly healthBarLayer = new Container()
+  /** Splashes, smoke and explosions; drawn over the ships and shots, under the health bars. */
+  private readonly effectsLayer = new Container()
+  private readonly effects: EffectsLayer
+  private readonly audio: AudioEngine = getAudio()
+
+  private alerts: AlertState = INITIAL_ALERTS
+  /** Effects advance with `simTimeMs`, so a manual clock animates them too and tests stay exact. */
+  private lastEffectsAtMs = 0
+  private sailingLoop: LoopHandle | undefined
+  private ambienceLoop: LoopHandle | undefined
+  private sailing = false
+  private lastPlayerX = 0
+  private lastPlayerY = 0
+  private readonly pendingSounds = new Set<ReturnType<typeof setTimeout>>()
 
   private status: SessionStatus = 'running'
   private pauseReason: PauseReason | undefined
@@ -219,6 +247,9 @@ export class GameSession {
     }
 
     renderer.world.addChild(this.projectileLayer)
+    this.effects = createEffectsLayer(options.assets.atlases.ships.textures)
+    renderer.world.addChild(this.effectsLayer)
+    this.effectsLayer.addChild(this.effects.container)
     renderer.world.addChild(this.healthBarLayer)
     this.projectileViews = createProjectileViews({
       texture: cannonBall,
@@ -227,6 +258,8 @@ export class GameSession {
 
     this.world = createWorld({ config: this.config, seed: options.seed })
     this.input = createInputState()
+    this.lastPlayerX = this.world.player.x
+    this.lastPlayerY = this.world.player.y
     this.keyboard = createKeyboardInput({
       state: this.input,
       onPause: () => {
@@ -242,9 +275,10 @@ export class GameSession {
         stepWorld(this.world, STEP_MS, this.input)
         if (this.world.ended) this.finishMatch()
       },
-      onRender: (alpha) => {
-        this.renderWorld(alpha)
+      onRender: (alpha, simTimeMs) => {
+        this.renderWorld(alpha, simTimeMs)
         this.publish()
+        this.checkAlerts()
       },
     })
 
@@ -264,7 +298,31 @@ export class GameSession {
     this.pauseReason = undefined
     this.keyboard.attach()
     this.loop.start()
+    this.startLoops()
+    this.audio.play('game_start', 0.7)
     this.publish()
+  }
+
+  /**
+   * Ambience runs for the whole match; the sailing loop stays silent until the hull actually moves
+   * (`updateFeedback` ramps it). Both start here, right after the click that began the match, so the
+   * browser has already allowed audio to start.
+   */
+  private startLoops(): void {
+    this.ambienceLoop ??= this.audio.startLoop('ocean_ambience_loop', 0.22)
+    this.sailingLoop ??= this.audio.startLoop('ship_sailing_loop', 0)
+  }
+
+  /** One-shot warnings — low hull and the last ten seconds. `resolveAlerts` owns the rule. */
+  private checkAlerts(): void {
+    const outcome = resolveAlerts(this.alerts, {
+      hpPercent: this.world.player.hp,
+      remainingSec: Math.max(0, Math.ceil(this.world.remainingMs / 1000)),
+      running: this.status === 'running',
+    })
+
+    this.alerts = outcome.next
+    for (const sound of outcome.sounds) this.audio.play(sound, 0.85)
   }
 
   pause(reason: PauseReason = 'user'): void {
@@ -274,6 +332,8 @@ export class GameSession {
     // Gameplay keys stop being captured as soon as the match is no longer active (spec §7).
     this.keyboard.detach()
     this.loop.stop()
+    this.sailingLoop?.setGain(0)
+    this.audio.play('game_pause', 0.6)
     this.publish()
   }
 
@@ -288,6 +348,7 @@ export class GameSession {
     this.loop.ignoreNextFrame()
     this.keyboard.attach()
     this.loop.start()
+    this.audio.play('game_resume', 0.6)
     this.publish()
   }
 
@@ -318,6 +379,15 @@ export class GameSession {
     document.removeEventListener('visibilitychange', this.handleVisibilityChange)
     this.listeners.clear()
 
+    // Delayed sounds (a sinking wreck, the score landing) must not outlive the session that asked
+    // for them, and the loops have to stop or the next match would stack a second ambience on top.
+    for (const handle of this.pendingSounds) clearTimeout(handle)
+    this.pendingSounds.clear()
+    this.sailingLoop?.stop()
+    this.ambienceLoop?.stop()
+    this.sailingLoop = undefined
+    this.ambienceLoop = undefined
+
     for (const view of this.shipViews.values()) view.destroy()
     this.shipViews.clear()
 
@@ -327,9 +397,11 @@ export class GameSession {
     for (const view of this.healthBars.values()) view.destroy()
     this.healthBars.clear()
 
+    this.effects.destroy()
     this.projectileViews.destroy()
     this.projectileLayer.destroy({ children: true })
     this.healthBarLayer.destroy({ children: true })
+    this.effectsLayer.destroy()
     this.shipLayer.destroy({ children: true })
     this.background.destroy()
     this.renderer.destroy()
@@ -462,6 +534,20 @@ export class GameSession {
     return this.pauseReason
   }
 
+  /** Audio health for the acceptance check: what played, what was dropped, which loops are running. */
+  getAudioState(): AudioState {
+    return this.audio.getState()
+  }
+
+  /** How many effects of a kind are alive right now, so "every hit produced feedback" is countable. */
+  getEffectCount(kind?: EffectKind): number {
+    return this.effects.count(kind)
+  }
+
+  getEffectStats(): { readonly created: number; readonly active: number } {
+    return this.effects.stats()
+  }
+
   /** Drive the input state directly; used by tests that cannot dispatch real key events. */
   getInput(): InputState {
     return this.input
@@ -479,7 +565,7 @@ export class GameSession {
     }
   }
 
-  private renderWorld(alpha: number): void {
+  private renderWorld(alpha: number, simTimeMs: number): void {
     this.ensureShipViews()
     this.ensureHealthBars()
 
@@ -489,6 +575,7 @@ export class GameSession {
     }
 
     this.projectileViews.sync(this.world, alpha)
+    this.updateFeedback(simTimeMs)
 
     // Views are released from the simulation's own removal events, so a shot that died mid-step
     // always frees its sprite — even when this one frame ran several fixed steps.
@@ -497,10 +584,60 @@ export class GameSession {
 
     const removedProjectiles: number[] = []
     for (const event of events) {
-      if (event.entity === 'projectile') removedProjectiles.push(event.id)
-      if (event.entity === 'enemy') this.releaseEnemyViews(event.id)
+      if (event.type === 'entityRemoved') {
+        if (event.entity === 'projectile') removedProjectiles.push(event.id)
+        else this.releaseEnemyViews(event.id)
+      }
+
+      this.playFeedback(event)
     }
+
     this.projectileViews.release(removedProjectiles)
+  }
+
+  /** Animates the effects on the simulation clock and keeps the sailing loop in step with motion. */
+  private updateFeedback(simTimeMs: number): void {
+    // Clamped like the loop's own frame budget, so a tab that was hidden for a minute does not make
+    // every pooled effect jump to the end of its life in one frame.
+    const deltaMs = Math.max(0, Math.min(MAX_FRAME_MS, simTimeMs - this.lastEffectsAtMs))
+    this.lastEffectsAtMs = simTimeMs
+    this.effects.update(deltaMs)
+
+    const player = this.world.player
+    const dx = player.x - this.lastPlayerX
+    const dy = player.y - this.lastPlayerY
+    this.lastPlayerX = player.x
+    this.lastPlayerY = player.y
+
+    const moving = dx * dx + dy * dy > 0.25
+    if (moving === this.sailing) return
+
+    this.sailing = moving
+    this.sailingLoop?.setGain(moving && this.status === 'running' ? 0.3 : 0)
+  }
+
+  /** Turns one simulation event into the effect and the sounds it deserves. */
+  private playFeedback(event: SimEvent): void {
+    const feedback = feedbackForEvent(event)
+    if (feedback === undefined) return
+
+    for (const effect of feedback.effects) {
+      this.effects.spawn(effect.kind, effect.x, effect.y, effect.options)
+    }
+
+    for (const sound of feedback.sounds) {
+      if (sound.delayMs === undefined) {
+        this.audio.play(sound.key, sound.gain)
+        continue
+      }
+
+      // A wreck finishes sinking — or the score lands — a beat after the impact that caused it.
+      const handle = setTimeout(() => {
+        this.pendingSounds.delete(handle)
+        this.audio.play(sound.key, sound.gain)
+      }, sound.delayMs)
+      this.pendingSounds.add(handle)
+    }
   }
 
   /** An enemy's bar and hull go away together, in the frame the simulation removed it. */
@@ -550,6 +687,10 @@ export class GameSession {
     this.pauseReason = undefined
     this.keyboard.detach()
     this.loop.stop()
+    this.sailingLoop?.setGain(0)
+    // A match that runs out of time ends in silence otherwise: the explosion sounds belong to a hull
+    // being sunk, which is the other way a match ends.
+    if (this.world.endReason === 'time') this.audio.play('game_complete', 0.8)
     this.publish()
   }
 

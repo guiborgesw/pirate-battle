@@ -107,3 +107,21 @@ Two while implementing M7:
   rather than only true inside `localStorage`.
 - **The M8 result panel was deleted, not kept.** The placeholder in `Hud.tsx` is gone: with a real
   result screen, leaving the old panel would mean two places claiming to show the same match.
+
+## G. Additions while implementing M10
+
+- **Muzzle smoke and water splashes are composed.** The pack has explosion and fire sprites but no
+  smoke and no splash, so both are drawn with `Graphics` primitives (a puff that expands and fades, a
+  fan of droplets with a ring) and everything else uses the sprites. This composition was put to the
+  author before implementation and approved; the alternative was a shot with no smoke at all.
+- **`SimEvent` grew three payloads.** The plan's events reported removals by id only, which is enough
+  to release a pooled sprite but not to place an effect: the feedback layer would have had to look up
+  or re-derive positions after the entity was already gone. Events now carry the muzzle point and mount
+  for a shot, the position and reason for a projectile that died, and the position, amount, lethality
+  and source of damage. The "no effect drawn twice" rule (a removal with reason `hit` shows nothing,
+  because the damage event already drew it) is asserted in the self-check.
+- **Mute is stored apart from the gameplay options** (`pb.audio.v1` rather than `pb.options.v1`). The
+  spec's Options screen is about the two session parameters; mute is a device setting, and keeping it
+  separate means it applies to the menus too, not just to a match.
+- **The HUD timer turns amber and pulses in the last ten seconds.** The plan asks for the warning
+  sound; the highlight uses the same constant so the two cannot drift apart.
