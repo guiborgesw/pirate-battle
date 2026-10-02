@@ -15,6 +15,12 @@ export function movementSystem(world: World, dtMs: number, intent: ShipIntent): 
   const stats = world.config.player
   const player = world.player
 
+  if (!player.alive) {
+    player.vx = 0
+    player.vy = 0
+    return
+  }
+
   if (intent.rotateLeft) player.rotation -= stats.turnSpeedRad * dtSec
   if (intent.rotateRight) player.rotation += stats.turnSpeedRad * dtSec
   player.rotation = normalizeAngle(player.rotation)

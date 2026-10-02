@@ -85,6 +85,9 @@ export function weaponsSystem(world: World, dtMs: number, intent: ShipIntent): v
   const player = world.player
   const weapons = world.config.player.weapons
 
+  // A wrecked player stops firing; M8 is what freezes the rest of the match.
+  if (!player.alive) return
+
   tickCooldowns(player, dtMs)
 
   if (intent.fireFront && player.cooldowns.front === 0) {

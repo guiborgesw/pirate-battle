@@ -5,9 +5,10 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M6 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
-> Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, and the
-> three gun mounts firing pooled cannonballs. Enemies arrive with M7; the milestone map is in
+> **Status:** M1–M7 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, the three
+> gun mounts firing pooled cannonballs, and both enemy types hunting the player with health bars and
+> scoring. The match clock and pause arrive with M8; the milestone map is in
 > [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
 > [`docs/plan-deviations.md`](docs/plan-deviations.md).
 

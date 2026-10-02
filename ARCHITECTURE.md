@@ -244,7 +244,35 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   `pnpm self-check`, because this failure mode (sailing stern-first) is invisible to typecheck, lint
   and the headless checks: it only shows up on screen. Details in `docs/assets-reference.md`.
 
+## Enemies, spawning and scoring (M7)
+
+- **Chaser**: seeks the player and rams. Contact costs the player `contactDamage`, destroys the Chaser
+  and sets `killedBy = 'self'`, which never moves the score.
+- **Shooter**: closes in until `preferredRange`, then holds that ring, turning to face the player; it
+  fires when the player is inside `attackRange`, its own cooldown has run out and its bow is on target
+  (`aimToleranceRad`). It will not fire into a reef.
+- **Steering has no pathfinding** (plan §1.3): both kinds turn toward the player at their
+  `turnSpeedRad` and thrust only along their own heading, exactly like the player. A probe of
+  2 × radius ahead of the bow is what keeps them off the islands — if it lands inside one, the enemy
+  swerves one step to the side with more clearance, re-evaluated every step. Asserted: over a full
+  two-minute match no enemy ever overlaps land, leaves the arena or produces a NaN coordinate.
+- **Spawn schedule**: every `spawn.intervalMs`, up to `spawn.candidates` points are drawn inside the
+  arena's edge band; the first point clear of islands _for that kind's hull_ and at least
+  `minDistanceFromPlayer` from the player wins. If no candidate passes, the tick is skipped rather
+  than forced — spawning on top of the player would be unfair damage, which the spec forbids.
+  Weighted by `spawn.weights`, with one guarantee: the first two spawns are one of each kind, so both
+  types always appear in a standard match. `spawn.maxAlive` caps the arena.
+- **Damage and death**: a projectile applies its damage once and dies on impact, so a killing shot
+  cannot also hit a second hull in the same step. A destroyed enemy leaves the arrays at the step's
+  `compact()`, which is what makes "a killed enemy stops firing, damaging and colliding" true rather
+  than aspirational. `world.score` only moves when `killedBy === 'player'`.
+- **Health bars** above every ship, built from the UI atlas parts (`health_frame` +
+  `health_fill_green|amber|red`) and coloured by the same thresholds as the hull damage ladder, so a
+  bar and the wood under it never disagree. One bar per ship, reused all match: the texture swaps only
+  when the tier changes, the width only when the ratio does, and the bars live in an unrotated layer
+  so they stay level while the hull rolls.
+
 ## Pending sections
 
-Enemy AI, spawns, the health/damage system and scoring (M7), match rules and pause (M8), the API
-layer (M11) and the mock scenarios (M12) are filled in as those milestones land.
+Match rules and pause (M8), the API layer (M11) and the mock scenarios (M12) are filled in as those
+milestones land.

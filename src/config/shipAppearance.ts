@@ -38,6 +38,25 @@ export type ShipAppearance = {
 
 const DAMAGE_TIER_THRESHOLDS = { chipped: 0.66, damaged: 0.33 } as const
 
+/**
+ * Health bar above every ship, measured against the UI atlas: the frame is 256x48 with the fill
+ * drawn inside its well (art spans x 30..225, i.e. 196 px, symmetric about the centre). The bar is
+ * drawn at `widthPx` logical pixels wide and the fill shrinks from its left edge.
+ */
+export const HEALTH_BAR = {
+  widthPx: 64,
+  offsetAboveShipPx: 16,
+} as const
+
+export type HealthBarTier = 'green' | 'amber' | 'red'
+
+/** Bar colour follows the same thresholds as the hull damage ladder, so bar and hull agree. */
+export function healthBarTier(healthRatio: number): HealthBarTier {
+  if (healthRatio <= DAMAGE_TIER_THRESHOLDS.damaged) return 'red'
+  if (healthRatio <= DAMAGE_TIER_THRESHOLDS.chipped) return 'amber'
+  return 'green'
+}
+
 /** 1 = intact, 2 = chipped (<= 66 %), 3 = badly damaged (<= 33 %), 4 = sunk wreck. */
 export function hullTierFor(healthRatio: number, dead = false): HullTier {
   if (dead) return 4

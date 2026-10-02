@@ -41,7 +41,7 @@ export function spawnProjectile(world: World, spawn: ProjectileSpawn): Projectil
   }
 
   world.nextEntityId += 1
-  world.shotsFired += 1
+  if (spawn.owner === 'player') world.shotsFired += 1
   world.projectiles.push(projectile)
   return projectile
 }

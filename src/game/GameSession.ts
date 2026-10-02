@@ -24,13 +24,15 @@ import { createKeyboardInput, type KeyboardInput } from './input/KeyboardInput.t
 import { createRenderer, type Renderer } from './render/Renderer.ts'
 import { createArenaBackground } from './render/views/ArenaBackground.ts'
 import { createIslandView, type IslandView } from './render/views/IslandView.ts'
+import { createHealthBarView, type HealthBarView } from './render/views/HealthBarView.ts'
 import {
   createProjectileViews,
   type ProjectileViews,
   type ProjectileViewStats,
 } from './render/views/ProjectileView.ts'
 import { createShipView, type ShipView } from './render/views/ShipView.ts'
-import type { Ship } from './sim/entities.ts'
+import type { EnemyShip, Ship } from './sim/entities.ts'
+import { addEnemy } from './sim/systems/spawn.ts'
 import { consumeEvents, createWorld, stepWorld, type World } from './sim/World.ts'
 
 /** Cannonball frame in the ships sheet (10x10, so a logical radius of 5). */
@@ -58,6 +60,17 @@ export type PlayerState = {
   readonly y: number
   readonly rotation: number
   readonly hp: number
+}
+
+export type EnemyState = {
+  readonly id: number
+  readonly kind: 'chaser' | 'shooter'
+  readonly x: number
+  readonly y: number
+  readonly hp: number
+  readonly maxHp: number
+  readonly alive: boolean
+  readonly killedBy: 'player' | 'self' | undefined
 }
 
 export type ProjectileState = {
@@ -92,6 +105,7 @@ export type SessionDiagnostics = {
   readonly worldScale: number
   readonly islands: number
   readonly shipViews: number
+  readonly healthBars: number
   readonly projectiles: ProjectileViewStats
   readonly shotsFired: number
 }
@@ -146,9 +160,12 @@ export class GameSession {
   private readonly background: ReturnType<typeof createArenaBackground>
   private readonly islandViews: IslandView[] = []
   private readonly shipViews = new Map<number, ShipView>()
+  private readonly healthBars = new Map<number, HealthBarView>()
   private readonly shipLayer = new Container()
   private readonly projectileLayer = new Container()
   private readonly projectileViews: ProjectileViews
+  /** Bars sit above every other world object and never rotate with the hull. */
+  private readonly healthBarLayer = new Container()
 
   private status: SessionStatus = 'running'
   private pauseReason: PauseReason | undefined
@@ -192,6 +209,7 @@ export class GameSession {
     }
 
     renderer.world.addChild(this.projectileLayer)
+    renderer.world.addChild(this.healthBarLayer)
     this.projectileViews = createProjectileViews({
       texture: cannonBall,
       layer: this.projectileLayer,
@@ -288,8 +306,12 @@ export class GameSession {
     for (const view of this.islandViews) view.destroy()
     this.islandViews.length = 0
 
+    for (const view of this.healthBars.values()) view.destroy()
+    this.healthBars.clear()
+
     this.projectileViews.destroy()
     this.projectileLayer.destroy({ children: true })
+    this.healthBarLayer.destroy({ children: true })
     this.shipLayer.destroy({ children: true })
     this.background.destroy()
     this.renderer.destroy()
@@ -319,6 +341,29 @@ export class GameSession {
     return this.world.shotsFired
   }
 
+  getScore(): number {
+    return this.world.score
+  }
+
+  /** Live enemies with their health, for the browser test hooks. */
+  getEnemyState(): readonly EnemyState[] {
+    return this.world.enemies.map((enemy) => ({
+      id: enemy.id,
+      kind: enemy.kind,
+      x: enemy.x,
+      y: enemy.y,
+      hp: enemy.hp,
+      maxHp: enemy.maxHp,
+      alive: enemy.alive,
+      killedBy: enemy.killedBy,
+    }))
+  }
+
+  /** Drops an enemy at a fixed spot, so a test can stage a fight deterministically. */
+  spawnEnemy(kind: EnemyShip['kind'], x: number, y: number): number {
+    return addEnemy(this.world, kind, x, y).id
+  }
+
   getDiagnostics(): SessionDiagnostics {
     const source = this.background.texture.source
 
@@ -343,6 +388,7 @@ export class GameSession {
       worldScale: this.renderer.scaleFactor(),
       islands: this.islandViews.length,
       shipViews: this.shipViews.size,
+      healthBars: this.healthBars.size,
       projectiles: this.projectileViews.stats(),
       shotsFired: this.world.shotsFired,
     }
@@ -395,9 +441,11 @@ export class GameSession {
 
   private renderWorld(alpha: number): void {
     this.ensureShipViews()
+    this.ensureHealthBars()
 
     for (const ship of [this.world.player, ...this.world.enemies]) {
       this.shipViews.get(ship.id)?.sync(ship, alpha)
+      this.healthBars.get(ship.id)?.sync(ship, alpha)
     }
 
     this.projectileViews.sync(this.world, alpha)
@@ -410,8 +458,30 @@ export class GameSession {
     const removedProjectiles: number[] = []
     for (const event of events) {
       if (event.entity === 'projectile') removedProjectiles.push(event.id)
+      if (event.entity === 'enemy') this.releaseEnemyViews(event.id)
     }
     this.projectileViews.release(removedProjectiles)
+  }
+
+  /** An enemy's bar and hull go away together, in the frame the simulation removed it. */
+  private releaseEnemyViews(id: number): void {
+    this.healthBars.get(id)?.destroy()
+    this.healthBars.delete(id)
+
+    this.shipViews.get(id)?.destroy()
+    this.shipViews.delete(id)
+  }
+
+  private ensureHealthBars(): void {
+    const parts = this.assets.atlases.ui
+
+    for (const ship of [this.world.player, ...this.world.enemies]) {
+      if (this.healthBars.has(ship.id)) continue
+
+      const view = createHealthBarView({ parts, ship })
+      this.healthBars.set(ship.id, view)
+      this.healthBarLayer.addChild(view.container)
+    }
   }
 
   private computeSnapshot(): HudSnapshot {
@@ -420,7 +490,7 @@ export class GameSession {
 
     return {
       status: this.status,
-      score: 0,
+      score: this.world.score,
       remainingSec,
       playerHp: this.world.player.hp,
       endReason: undefined,

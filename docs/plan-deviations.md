@@ -60,6 +60,17 @@ sprite sits 26 px forward — the ball would visibly leave the deck instead of t
 tunable, so under the brief's own rule ("every tunable number lives here") it belongs in the config
 snapshot rather than in render code.
 
+Two while implementing M7:
+
+- `GameConfig` gained an **`enemyAi`** block (`probeRadii`, `swerveRad`, `aimToleranceRad`). The plan
+  fixed the probe length at 2 × radius but left the swerve step and the aiming cone unspecified; both
+  are balance numbers, so they join the config snapshot by the same rule as `muzzleOffsetPx`.
+- **Health bars are drawn with the provided UI sprites, not with Pixi `Graphics`** as the plan's M7
+  line said. `ui_sheet` ships `health_frame` plus `health_fill_green|amber|red`, and the challenge
+  mockups draw exactly those bars above their ships — so using them matches the visual reference
+  instead of reinventing it. The colour thresholds reuse the hull damage ladder (`≤ 33 %`, `≤ 66 %`),
+  so the bar and the wood can never disagree.
+
 ## D. Open questions for the author
 
 | #   | Question                                                                 | Default if unanswered      |

@@ -9,9 +9,12 @@ import type { Circle, GameConfig, IslandDefinition } from '../../config/gameConf
 import { createRng, type Rng } from '../core/Rng.ts'
 import type { ShipIntent } from '../core/intents.ts'
 import type { EnemyShip, PlayerShip, Projectile, Ship } from './entities.ts'
+import { aiSystem } from './systems/ai.ts'
+import { chaserContactSystem, projectileImpactSystem } from './systems/combat.ts'
 import { islandCollisionSystem, projectileIslandSystem } from './systems/collision.ts'
 import { applyArenaBounds, movementSystem } from './systems/movement.ts'
 import { projectilesSystem } from './systems/projectiles.ts'
+import { spawnSystem } from './systems/spawn.ts'
 import { weaponsSystem } from './systems/weapons.ts'
 
 export type IslandCircle = Circle & {
@@ -38,8 +41,14 @@ export type World = {
   events: SimEvent[]
   simTimeMs: number
   nextEntityId: number
-  /** Total shots fired this match, win or lose — used by the cooldown checks and the HUD later. */
+  /** Shots the *player* fired this match; enemy fire is not counted here. */
   shotsFired: number
+  /** Points from enemies the player destroyed. Chaser self-destructs never move this. */
+  score: number
+  /** Milliseconds accumulated towards the next spawn. */
+  spawnElapsedMs: number
+  /** How many enemies the schedule has placed — the first-two-kinds guarantee reads this. */
+  spawnsMade: number
 }
 
 export type WorldOptions = {
@@ -90,6 +99,9 @@ export function createWorld(options: WorldOptions): World {
     simTimeMs: 0,
     nextEntityId: 2,
     shotsFired: 0,
+    score: 0,
+    spawnElapsedMs: 0,
+    spawnsMade: 0,
   }
 }
 
@@ -148,20 +160,32 @@ export function consumeEvents(world: World): SimEvent[] {
   return events
 }
 
-/** Runs one fixed step of the simulation. */
+/**
+ * Runs one fixed step of the simulation. The order is the contract:
+ *
+ * player input → enemy steering → arena and island collisions → player guns → projectiles fly →
+ * impacts and the Chaser ram → spawn schedule → one `compact()`.
+ *
+ * Impacts land before the schedule so a ship that spawns this step cannot be hit during its own spawn
+ * step; `compact()` last means no system ever reads a half-removed array.
+ */
 export function stepWorld(world: World, dtMs: number, intent: ShipIntent): void {
   capturePreviousTransforms(world)
   world.simTimeMs += dtMs
 
   movementSystem(world, dtMs, intent)
+  aiSystem(world, dtMs)
   applyArenaBounds(world)
   islandCollisionSystem(world)
 
   weaponsSystem(world, dtMs, intent)
   projectilesSystem(world, dtMs)
   projectileIslandSystem(world)
+  projectileImpactSystem(world)
+  chaserContactSystem(world)
 
+  spawnSystem(world, dtMs)
   compact(world)
 
-  // M7: enemy AI + spawn + health/damage + scoring — M8: match rules.
+  // M8: match clock, end conditions and the freeze that follows.
 }

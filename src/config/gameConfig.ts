@@ -59,6 +59,14 @@ export type GameConfig = {
     readonly candidates: number
   }
   readonly islands: readonly IslandDefinition[]
+  readonly enemyAi: {
+    /** How far ahead the avoidance probe looks, in ship radii (plan §1.3: 2x radius). */
+    readonly probeRadii: number
+    /** How far an enemy may swerve off its target heading when that probe is blocked. */
+    readonly swerveRad: number
+    /** A Shooter only pulls the trigger with the player inside this cone. */
+    readonly aimToleranceRad: number
+  }
   readonly player: ShipStats & {
     readonly weapons: {
       readonly front: WeaponStats
@@ -115,6 +123,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
       ],
     },
   ],
+  enemyAi: { probeRadii: 2, swerveRad: 0.35, aimToleranceRad: 0.25 },
   player: {
     maxHp: 100,
     speed: 148,

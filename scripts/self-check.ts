@@ -16,7 +16,9 @@ import { createClock } from '../src/game/core/Clock.ts'
 import { createFixedStepLoop } from '../src/game/core/FixedStepLoop.ts'
 import { createRng } from '../src/game/core/Rng.ts'
 import { EMPTY_INTENT, type ShipIntent } from '../src/game/core/intents.ts'
-import { headingToVector } from '../src/game/core/math.ts'
+import { angleDelta, distanceSquared, headingToVector } from '../src/game/core/math.ts'
+import { headingToPoint } from '../src/game/sim/systems/ai.ts'
+import { addEnemy, findBerth } from '../src/game/sim/systems/spawn.ts'
 import { createWorld, stepWorld, type World } from '../src/game/sim/World.ts'
 import { consumeEvents } from '../src/game/sim/World.ts'
 import { effectiveRangePx } from '../src/game/sim/systems/weapons.ts'
@@ -913,6 +915,297 @@ section('atlas manifest')
     missingSounds === 0,
     `${missingSounds} missing`,
   )
+}
+
+section('enemies, spawn and scoring')
+
+const enemyStepMs = 1000 / 60
+
+/** Runs whole seconds of simulation, so a test reads in match time rather than step counts. */
+function runFor(world: World, seconds: number, intent: ShipIntent = EMPTY_INTENT): void {
+  const steps = Math.round((seconds * 1000) / enemyStepMs)
+  for (let step = 0; step < steps; step += 1) stepWorld(world, enemyStepMs, intent)
+}
+
+function gapBetween(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.sqrt(distanceSquared(a.x, a.y, b.x, b.y))
+}
+
+/**
+ * Focused behaviour tests must not race the spawn schedule: a guaranteed Chaser turning up mid-test
+ * rams the player for `contactDamage`, which would show up as enemy fire. These tests disable the
+ * schedule; the schedule itself is measured separately.
+ */
+function withoutSpawns(config: Readonly<GameConfig>): Readonly<GameConfig> {
+  return { ...config, spawn: { ...config.spawn, intervalMs: 60 * 60 * 1000 } }
+}
+
+function islandClearance(world: World, ship: { x: number; y: number; radius: number }): number {
+  let worst = Number.POSITIVE_INFINITY
+  for (const circle of world.islands) {
+    const clearance =
+      Math.sqrt(distanceSquared(ship.x, ship.y, circle.x, circle.y)) - circle.radius - ship.radius
+    if (clearance < worst) worst = clearance
+  }
+  return worst
+}
+
+{
+  // Every berth the scheduler is willing to use must be clear of land and out of the player's lap:
+  // the spec calls unfair spawn damage out by name.
+  const world = createWorld({ config: testConfig, seed: 7 })
+  const spawnSettings = world.config.spawn
+  const berths = Array.from({ length: 200 }, () => findBerth(world, 'shooter'))
+  const found = berths.filter((berth) => berth !== undefined)
+
+  check('berths are found at all', found.length > 0, `${found.length}/200 attempts`)
+
+  const allFarFromPlayer = found.every(
+    (berth) =>
+      gapBetween({ x: berth.x, y: berth.y }, world.player) >= spawnSettings.minDistanceFromPlayer,
+  )
+  check(
+    'every berth is at least minDistanceFromPlayer away',
+    allFarFromPlayer,
+    `threshold ${spawnSettings.minDistanceFromPlayer} px`,
+  )
+
+  const allClearOfLand = found.every((berth) => islandClearance(world, { ...berth, radius: 0 }) > 0)
+  check('every berth is clear of islands', allClearOfLand)
+
+  const allInsideArena = found.every(
+    (berth) =>
+      berth.x >= 0 &&
+      berth.y >= 0 &&
+      berth.x <= world.config.arena.width &&
+      berth.y <= world.config.arena.height,
+  )
+  check('every berth is inside the arena', allInsideArena)
+}
+
+{
+  // The schedule's guarantee: both types show up in the first two spawns, whatever the dice say.
+  const world = createWorld({ config: openWater, seed: 9 })
+  const kinds: string[] = []
+
+  for (let spawn = 0; spawn < 2; spawn += 1) {
+    runFor(world, world.config.spawn.intervalMs / 1000 + 0.05)
+    const newest = world.enemies[world.enemies.length - 1]
+    if (newest !== undefined) kinds.push(newest.kind)
+  }
+
+  check(
+    'the first two spawns are one of each kind',
+    kinds.length === 2 && kinds[0] !== kinds[1],
+    kinds.join(', ') || 'nothing spawned',
+  )
+}
+
+{
+  // Weighted afterwards. The arena is cleared before every measurement: the schedule stops at
+  // maxAlive, and with it stopped the last slot keeps the same enemy, which would be counted again.
+  const world = createWorld({ config: openWater, seed: 21 })
+  const spawnIntervalSec = world.config.spawn.intervalMs / 1000
+  let chasers = 0
+  let others = 0
+  const scheduled = 60
+
+  for (let spawn = 0; spawn < scheduled; spawn += 1) {
+    world.enemies.length = 0
+    runFor(world, spawnIntervalSec + 0.05)
+
+    const newest = world.enemies[world.enemies.length - 1]
+    // Spawn 0 and 1 are the forced one-of-each pair; the weighted draw starts at spawn 2.
+    if (spawn >= 2 && newest !== undefined) {
+      if (newest.kind === 'chaser') chasers += 1
+      else others += 1
+    }
+  }
+
+  const chaserShare = chasers + others === 0 ? 0 : chasers / (chasers + others)
+  check(
+    'the weighted mix favours chasers as configured',
+    chaserShare > 0.45 && chaserShare < 0.75,
+    `chaser share ${(chaserShare * 100).toFixed(0)} % over ${chasers + others} spawns (weight 60 %)`,
+  )
+}
+
+{
+  // A chaser closes in, aligns on the player, and rams: damage to the player, no point for it.
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 3 })
+  const chaser = addEnemy(world, 'chaser', 200, 160)
+  const startGap = gapBetween(chaser, world.player)
+  const hpBefore = world.player.hp
+
+  runFor(world, 0.5)
+  check(
+    'a chaser closes on the player',
+    gapBetween(chaser, world.player) < startGap,
+    `${startGap.toFixed(0)} → ${gapBetween(chaser, world.player).toFixed(0)} px`,
+  )
+
+  const aimError = Math.abs(angleDelta(chaser.rotation, headingToPoint(chaser, world.player)))
+  check('a chaser points at the player', aimError < 0.05, `${aimError.toFixed(3)} rad off`)
+
+  runFor(world, 4)
+  check(
+    'ramming damages the player by contactDamage',
+    world.player.hp === hpBefore - world.config.chaser.contactDamage,
+    `hp ${hpBefore} → ${world.player.hp}`,
+  )
+  check('the chaser dies on contact', !chaser.alive && chaser.killedBy === 'self')
+  check('a chaser self-destruct scores nothing', world.score === 0, `score ${world.score}`)
+}
+
+{
+  // A shooter holds its range, fires on cooldown, and lands exactly one damage per shot.
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 4 })
+  const shooterConfig = world.config.shooter
+  const shooter = addEnemy(world, 'shooter', 120, 360)
+  const openingGap = gapBetween(shooter, world.player)
+
+  check('a shooter starts out of range and holds fire', openingGap > shooterConfig.attackRange)
+  runFor(world, 0.1)
+  check('no enemy shot before the shooter is in range', world.projectiles.length === 0)
+
+  runFor(world, 1.5)
+  check('a shooter closes on the player', gapBetween(shooter, world.player) < openingGap)
+
+  runFor(world, 6)
+  const heldGap = gapBetween(shooter, world.player)
+  check(
+    'a shooter holds its preferred range',
+    Math.abs(heldGap - shooterConfig.preferredRange) < 40,
+    `${heldGap.toFixed(0)} px vs preferred ${shooterConfig.preferredRange} px`,
+  )
+
+  const hpBefore = world.player.hp
+  // Watch a window longer than the firing interval: at any instant the shooter may be mid-cooldown,
+  // so "did it open fire" has to be observed over time rather than sampled once.
+  let sawEnemyShot = false
+  const watchSteps = Math.round(2000 / enemyStepMs)
+  for (let step = 0; step < watchSteps; step += 1) {
+    stepWorld(world, enemyStepMs, EMPTY_INTENT)
+    if (world.projectiles.some((shot) => shot.owner === 'enemy')) sawEnemyShot = true
+  }
+  check('a shooter in range opens fire', sawEnemyShot)
+
+  runFor(world, 3)
+  const lost = hpBefore - world.player.hp
+  const hits = lost / shooterConfig.weapon.damage
+  check(
+    'each enemy shot takes exactly one weapon worth of health',
+    lost > 0 && Number.isInteger(hits),
+    `player lost ${lost} hp in ${hits} hit(s) of ${shooterConfig.weapon.damage}`,
+  )
+  check(
+    'the shooter respects its firing interval',
+    hits <= Math.ceil(3000 / shooterConfig.weapon.cooldownMs) + 1,
+    `${hits} hits in 3 s with a ${shooterConfig.weapon.cooldownMs} ms cooldown`,
+  )
+}
+
+{
+  // Player fire kills an enemy: damage lands once, a destroyed enemy stops existing, and only that
+  // kill scores.
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 5 })
+  const target = addEnemy(world, 'chaser', 640, 100)
+  const bow = world.config.player.weapons.front
+
+  stepWorld(world, enemyStepMs, fireFrontIntent)
+  runFor(world, 0.5)
+  check(
+    'a player shot takes exactly one weapon worth of health',
+    target.hp === world.config.chaser.maxHp - bow.damage,
+    `hp ${target.hp} of ${world.config.chaser.maxHp} (bow ${bow.damage})`,
+  )
+  check(
+    'the shot that hit is gone',
+    world.projectiles.length === 0,
+    `${world.projectiles.length} left`,
+  )
+
+  // Second hit finishes it.
+  while (target.alive && world.simTimeMs < 4000) {
+    stepWorld(world, enemyStepMs, fireFrontIntent)
+  }
+
+  check('a destroyed enemy leaves the world', world.enemies.length === 0)
+  check('the kill is credited to the player', target.killedBy === 'player')
+  check('a player kill scores one point', world.score === 1, `score ${world.score}`)
+}
+
+{
+  // "Killed enemies stop firing immediately": after the kill, no new enemy shot appears.
+  const world = createWorld({ config: withoutSpawns(openWater), seed: 6 })
+  const shooter = addEnemy(world, 'shooter', 640, 120)
+
+  while (world.projectiles.every((shot) => shot.owner !== 'enemy') && world.simTimeMs < 4000) {
+    stepWorld(world, enemyStepMs, EMPTY_INTENT)
+  }
+  check(
+    'the shooter fired while it was alive',
+    world.projectiles.some((shot) => shot.owner === 'enemy'),
+  )
+
+  while (shooter.alive && world.simTimeMs < 8000) {
+    stepWorld(world, enemyStepMs, fireFrontIntent)
+  }
+  check('the shooter can be destroyed', !shooter.alive, `hp ${shooter.hp}`)
+
+  world.projectiles.length = 0
+  runFor(world, 3)
+  check(
+    'a destroyed enemy never fires again',
+    world.projectiles.every((shot) => shot.owner !== 'enemy'),
+    `${world.projectiles.length} projectile(s) alive`,
+  )
+}
+
+{
+  // Long match: both types turn up, nothing overlaps land, nobody leaves the arena, no NaN.
+  const world = createWorld({ config: testConfig, seed: 11 })
+  const seen = new Set<string>()
+  let worstIslandOverlap = Number.POSITIVE_INFINITY
+  let worstNan = false
+  let peakAlive = 0
+
+  for (let step = 0; step < 7200; step += 1) {
+    stepWorld(world, enemyStepMs, EMPTY_INTENT)
+
+    for (const enemy of world.enemies) {
+      seen.add(enemy.kind)
+      const clearance = islandClearance(world, enemy)
+      if (clearance < worstIslandOverlap) worstIslandOverlap = clearance
+
+      const insideArena =
+        enemy.x >= 0 &&
+        enemy.y >= 0 &&
+        enemy.x <= world.config.arena.width &&
+        enemy.y <= world.config.arena.height
+      if (!insideArena || Number.isNaN(enemy.x) || Number.isNaN(enemy.y)) worstNan = true
+    }
+
+    if (world.enemies.length > peakAlive) peakAlive = world.enemies.length
+  }
+
+  check(
+    'a two-minute match shows both enemy types',
+    seen.has('chaser') && seen.has('shooter'),
+    [...seen].join(', '),
+  )
+  check(
+    'enemies never overlap land, even when swerving',
+    worstIslandOverlap > -0.5,
+    `worst clearance ${worstIslandOverlap.toFixed(2)} px`,
+  )
+  check('enemies stay inside the arena with finite coordinates', !worstNan)
+  check(
+    'the schedule keeps the arena populated without piling up',
+    peakAlive > 0 && peakAlive <= world.config.spawn.maxAlive,
+    `peak ${peakAlive} of ${world.config.spawn.maxAlive}`,
+  )
+  check('the player never scored with no shots fired', world.score === 0)
 }
 
 section('ship art orientation')

@@ -52,8 +52,10 @@ export type PbTestHooks = {
   getState(): PbState
   /** Live shots with their velocity, so a test can assert the firing geometry. */
   getProjectiles(): readonly ProjectileState[]
-  /** Shots fired since the match started, including the ones that already died. */
+  /** Shots fired since the match started, including the ones already gone. */
   getShotsFired(): number
+  /** Drops an enemy at a fixed spot, so a test can stage a fight without waiting for the schedule. */
+  spawnEnemy(kind: 'chaser' | 'shooter', x: number, y: number): number
   setSeed(n: number): void
   useManualClock(): void
   advance(ms: number): number
@@ -87,6 +89,7 @@ function viewportDiagnostics(): SessionDiagnostics & {
     worldScale: 0,
     islands: 0,
     shipViews: 0,
+    healthBars: 0,
     projectiles: { created: 0, active: 0, pooled: 0 },
     shotsFired: 0,
   }
@@ -135,7 +138,7 @@ export function createTestHooks(): PbTestHooks {
 
       return {
         status: snapshot?.status ?? 'none',
-        score: snapshot?.score ?? 0,
+        score: session?.getScore() ?? snapshot?.score ?? 0,
         remainingMs: (snapshot?.remainingSec ?? 0) * 1000,
         player: {
           x: player?.x ?? 0,
@@ -143,7 +146,7 @@ export function createTestHooks(): PbTestHooks {
           rotation: player?.rotation ?? 0,
           hp: player?.hp ?? snapshot?.playerHp ?? 0,
         },
-        enemies: [],
+        enemies: session?.getEnemyState() ?? [],
         projectiles: session?.getProjectileState().length ?? 0,
         endReason: snapshot?.endReason,
       }
@@ -155,6 +158,10 @@ export function createTestHooks(): PbTestHooks {
 
     getShotsFired(): number {
       return getCurrentSession()?.getShotsFired() ?? 0
+    },
+
+    spawnEnemy(kind, x, y): number {
+      return getCurrentSession()?.spawnEnemy(kind, x, y) ?? -1
     },
 
     setSeed(n: number): void {
