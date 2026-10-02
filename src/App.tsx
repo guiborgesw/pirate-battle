@@ -1,29 +1,65 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
-import { createMatchConfig, type GameConfig } from './config/gameConfig.ts'
+import { configKey, createMatchConfig, type GameConfig } from './config/gameConfig.ts'
+import type { MatchOutcome } from './game/GameSession.ts'
 import { createTestHooks, installTestHooks, testHooksEnabled } from './game/testHooks.ts'
+import { loadLastResult, saveLastResult, type LastMatchResult } from './storage/lastResult.ts'
 import { loadOptions } from './storage/settings.ts'
-import { LoadingScreen } from './ui/screens/LoadingScreen.tsx'
 import { GameScreen } from './ui/screens/GameScreen.tsx'
+import { LoadingScreen } from './ui/screens/LoadingScreen.tsx'
+import { MenuScreen } from './ui/screens/MenuScreen.tsx'
+import { OptionsScreen } from './ui/screens/OptionsScreen.tsx'
+import { ResultScreen } from './ui/screens/ResultScreen.tsx'
 import { useAssetLoading } from './ui/useAssetLoading.ts'
 import styles from './App.module.css'
 
-type Screen = 'menu' | 'game'
+type Screen = 'menu' | 'options' | 'game' | 'result'
 
 /**
- * M4 host: loading → menu → arena. The real screen router (options, captain's log, result) and the
- * `sessionStore` arrive in M8/M9; until then this is the smallest thing that lets the arena be
- * mounted and unmounted repeatedly, which is what the milestone checks.
+ * Screen router. Loading → menu → (options | arena) → result.
+ *
+ * Two rules from the spec §3 live here rather than in the screens:
+ * - a match in progress is never persisted, so reloading the page or leaving the arena returns to the
+ *   menu with nothing recorded;
+ * - a finished match is persisted the moment it ends, which is why the write happens in exactly one
+ *   place and nowhere on the way out.
  */
 export default function App() {
   const { state, retry } = useAssetLoading()
   const [screen, setScreen] = useState<Screen>('menu')
   const [config, setConfig] = useState<Readonly<GameConfig>>(() => createMatchConfig())
+  const [lastResult, setLastResult] = useState<LastMatchResult | undefined>(() => loadLastResult())
 
   useEffect(() => {
     if (!testHooksEnabled(window.location.search, import.meta.env.MODE)) return
     installTestHooks(createTestHooks())
   }, [])
+
+  const startMatch = useCallback((): void => {
+    // Every match reads a snapshot of the options that are current at that moment (spec §3).
+    setConfig(createMatchConfig(loadOptions()))
+    setScreen('game')
+  }, [])
+
+  const finishMatch = useCallback(
+    (outcome: MatchOutcome): void => {
+      const result: LastMatchResult = {
+        score: outcome.score,
+        playedSec: outcome.playedSec,
+        durationSec: config.match.durationSec,
+        endReason: outcome.endReason,
+        // The ranking API arrives with M11/M12; until then every result is honestly "pending".
+        registration: 'pending',
+        finishedAt: new Date().toISOString(),
+        configKey: configKey(config),
+      }
+
+      saveLastResult(result)
+      setLastResult(result)
+      setScreen('result')
+    },
+    [config],
+  )
 
   if (state.status !== 'ready') {
     return (
@@ -35,12 +71,6 @@ export default function App() {
     )
   }
 
-  const startMatch = (): void => {
-    // Every match reads a snapshot of the options that are current at that moment (spec §3).
-    setConfig(createMatchConfig(loadOptions()))
-    setScreen('game')
-  }
-
   if (screen === 'game') {
     return (
       <GameScreen
@@ -50,30 +80,38 @@ export default function App() {
         onExit={() => {
           setScreen('menu')
         }}
+        onMatchEnd={finishMatch}
       />
     )
   }
 
   return (
     <main className={styles.shell}>
-      <section className={styles.panel} aria-labelledby="menu-title">
-        <h1 className={styles.title} id="menu-title">
-          Pirate Battle
-        </h1>
-        <p className={styles.subtitle}>
-          Assets ready — ships {Object.keys(state.assets.atlases.ships.textures).length} · tiles{' '}
-          {Object.keys(state.assets.atlases.tiles.textures).length} · ui{' '}
-          {Object.keys(state.assets.atlases.ui.textures).length} · sounds{' '}
-          {Object.keys(state.assets.sounds).length}
-        </p>
-        <button className={styles.primary} data-testid="play" type="button" onClick={startMatch}>
-          Play
-        </button>
-        <p className={styles.note}>
-          M6: sail with W/A/S/D, fire with Space (bow) and Q/E (broadsides). Add{' '}
-          <code>?testHooks=1</code> for the <code>window.__pb</code> hooks.
-        </p>
-      </section>
+      {screen === 'menu' && (
+        <MenuScreen
+          lastResult={lastResult}
+          onPlay={startMatch}
+          onOptions={() => {
+            setScreen('options')
+          }}
+        />
+      )}
+      {screen === 'options' && (
+        <OptionsScreen
+          onBack={() => {
+            setScreen('menu')
+          }}
+        />
+      )}
+      {screen === 'result' && lastResult !== undefined && (
+        <ResultScreen
+          result={lastResult}
+          onPlayAgain={startMatch}
+          onMenu={() => {
+            setScreen('menu')
+          }}
+        />
+      )}
     </main>
   )
 }

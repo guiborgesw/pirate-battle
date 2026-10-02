@@ -1,4 +1,5 @@
-import type { EndReason, HudSnapshot } from '../../game/GameSession.ts'
+import type { HudSnapshot } from '../../game/GameSession.ts'
+import { formatClock } from '../format.ts'
 import { PauseDialog } from './PauseDialog.tsx'
 import { noteHudRender } from './renderCounter.ts'
 import styles from './Hud.module.css'
@@ -8,23 +9,15 @@ export type HudProps = {
   readonly onExit: () => void
   readonly onPause: () => void
   readonly onResume: () => void
-  readonly onRestart: () => void
 }
 
-/** mm:ss, as in the challenge mockups (01:42). */
-export function formatClock(seconds: number): string {
-  const safe = Math.max(0, Math.floor(seconds))
-  const minutes = Math.floor(safe / 60)
-  const rest = safe % 60
-  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
-}
-
-const END_TEXT: Record<EndReason, string> = {
-  time: 'Time is up.',
-  death: 'Your hull was sunk.',
-}
-
-export function Hud({ snapshot, onExit, onPause, onResume, onRestart }: HudProps) {
+/**
+ * In-match HUD: hull, score, time, and the pause control.
+ *
+ * The end of a match leaves this screen entirely (the result screen replaces the arena), so the only
+ * overlay here is the pause dialog.
+ */
+export function Hud({ snapshot, onExit, onPause, onResume }: HudProps) {
   // Counts real renders so the "HUD does not re-render every frame" claim is measurable.
   noteHudRender()
 
@@ -98,39 +91,6 @@ export function Hud({ snapshot, onExit, onPause, onResume, onRestart }: HudProps
       <div className={styles.overlay}>
         {snapshot.status === 'paused' && (
           <PauseDialog reason={snapshot.pauseReason} onResume={onResume} />
-        )}
-
-        {/* M9 turns this into the styled result screen with registration status; M8 only needs the
-            match to stop, the score to be readable and a restart that is a real new session. */}
-        {snapshot.status === 'ended' && (
-          <section
-            className={styles.result}
-            data-testid="match-over"
-            aria-labelledby="result-title"
-          >
-            <h2 className={styles.resultTitle} id="result-title">
-              Match over
-            </h2>
-            <p className={styles.resultScore} data-testid="final-score">
-              {snapshot.score} {snapshot.score === 1 ? 'point' : 'points'}
-            </p>
-            <p className={styles.resultReason}>
-              {snapshot.endReason === undefined ? '' : END_TEXT[snapshot.endReason]}
-            </p>
-            <div className={styles.resultActions}>
-              <button
-                className={styles.primary}
-                data-testid="play-again"
-                type="button"
-                onClick={onRestart}
-              >
-                Play again
-              </button>
-              <button className={styles.exit} type="button" onClick={onExit}>
-                Main menu
-              </button>
-            </div>
-          </section>
         )}
       </div>
     </div>

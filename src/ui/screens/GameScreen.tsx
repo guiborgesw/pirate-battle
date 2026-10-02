@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import type { LoadedAssets } from '../../game/assets/loadAssets.ts'
-import { GameSession, type HudSnapshot } from '../../game/GameSession.ts'
+import { GameSession, type HudSnapshot, type MatchOutcome } from '../../game/GameSession.ts'
 import { setCurrentSession } from '../../game/sessionRegistry.ts'
 import type { GameConfig } from '../../config/gameConfig.ts'
 import { Hud } from '../hud/Hud.tsx'
@@ -12,6 +12,8 @@ export type GameScreenProps = {
   readonly assets: LoadedAssets
   readonly seed: number
   readonly onExit: () => void
+  /** Called exactly once, when a match finishes. Leaving early never reaches this. */
+  readonly onMatchEnd: (outcome: MatchOutcome) => void
 }
 
 /** Stable object so `useSyncExternalStore` never sees a new snapshot while no session exists. */
@@ -28,14 +30,11 @@ const noop = (): void => {
   // No session mounted yet: nothing to unsubscribe from.
 }
 
-export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
+export function GameScreen({ config, assets, seed, onExit, onMatchEnd }: GameScreenProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<GameSession | undefined>(undefined)
   const [session, setSession] = useState<GameSession | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
-  // Restart is a real remount: bumping this destroys the session and builds a new one, so hull,
-  // score, clock and every entity are restored rather than reset field by field (spec §2).
-  const [runId, setRunId] = useState(0)
 
   useEffect(() => {
     const host = hostRef.current
@@ -68,7 +67,7 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
       setCurrentSession(undefined)
       active?.destroy()
     }
-  }, [config, seed, assets, runId])
+  }, [config, seed, assets])
 
   const subscribe = useCallback(
     (listener: () => void) => session?.subscribe(listener) ?? noop,
@@ -79,6 +78,20 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
 
   const hud = useSyncExternalStore(subscribe, getSnapshot)
 
+  // One finished match → one result. `destroy()` also ends the session internally, so the guard is
+  // what keeps an abandoned match from being recorded on the way out (spec §3).
+  const finishedRef = useRef(false)
+
+  useEffect(() => {
+    if (hud.status !== 'ended' || finishedRef.current) return
+
+    const active = sessionRef.current
+    if (active === undefined) return
+
+    finishedRef.current = true
+    onMatchEnd(active.getOutcome())
+  }, [hud.status, onMatchEnd])
+
   const handlePause = useCallback((): void => {
     sessionRef.current?.pause('user')
   }, [])
@@ -87,20 +100,10 @@ export function GameScreen({ config, assets, seed, onExit }: GameScreenProps) {
     sessionRef.current?.resume()
   }, [])
 
-  const handleRestart = useCallback((): void => {
-    setRunId((value) => value + 1)
-  }, [])
-
   return (
     <main className={styles.screen} data-testid="arena">
       <div className={styles.canvasHost} ref={hostRef} />
-      <Hud
-        snapshot={hud}
-        onExit={onExit}
-        onPause={handlePause}
-        onResume={handleResume}
-        onRestart={handleRestart}
-      />
+      <Hud snapshot={hud} onExit={onExit} onPause={handlePause} onResume={handleResume} />
       {error !== undefined && (
         <p className={styles.error} role="alert">
           {error}

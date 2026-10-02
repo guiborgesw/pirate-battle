@@ -5,11 +5,12 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M8 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> **Status:** M1–M9 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
-> and the match clock with pause, end and restart. Menus and options arrive with M9; the milestone map
-> is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
+> the match clock with pause/end/restart, and the menu, options and result screens with persistence.
+> The ranking and history APIs arrive with M11/M12; the milestone map is in
+> [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
 > [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
@@ -85,6 +86,21 @@ __pb.stressEnterExit(10) // 10 mount/unmount cycles; then read __pb.lastStress()
 
 `__pb.lastStress()` reports the peak canvas/session/listener counts while a match was mounted and the
 counts after leaving — that is the milestone's lifecycle check.
+
+## Screens
+
+| Screen                  | What it does                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| Loading                 | Progress bar over the asset load; a failed texture offer a Retry without a reload                   |
+| Main menu               | Play, Options, the control instructions and the Ranking / Match History tabs                        |
+| Options                 | Game session time and enemy spawn time: steppers, bounds announced, saved immediately and persisted |
+| Match                   | The PixiJS arena with the HUD, keyboard controls and pause (manual and automatic)                   |
+| Result                  | Score, time played, how the match ended, registration status, Play Again and Main Menu              |
+| Ranking / Match History | Placeholders — the API layer arrives with M11/M12                                                   |
+
+The menu, options and result screens are built from the UI atlas (`panel_menu`,
+`title_pirate_battle`, `button_primary_*`, `button_secondary_*`, `button_round_*` and the control
+icons) over `ui_scene_background.png`, matching the challenge mockups.
 
 ## Controls
 

@@ -47,6 +47,14 @@ export type EndReason = 'time' | 'death'
 export type SessionStatus = 'running' | 'paused' | 'ended'
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'auto'
 
+/** What the result screen needs from a finished match. */
+export type MatchOutcome = {
+  readonly score: number
+  /** Seconds of the session actually played, so a match cut short by death reports its real length. */
+  readonly playedSec: number
+  readonly endReason: EndReason
+}
+
 export type HudSnapshot = {
   readonly status: SessionStatus
   readonly score: number
@@ -354,6 +362,23 @@ export class GameSession {
   /** Milliseconds left on the simulation clock, unrounded — the ±1 step checks read this. */
   getRemainingMs(): number {
     return this.world.remainingMs
+  }
+
+  /** How the finished match ended, for the result screen. Only meaningful once `status` is 'ended'. */
+  getOutcome(): MatchOutcome {
+    const playedSec = Math.max(
+      0,
+      Math.min(
+        this.config.match.durationSec,
+        this.config.match.durationSec - this.world.remainingMs / 1000,
+      ),
+    )
+
+    return {
+      score: this.world.score,
+      playedSec: Math.round(playedSec),
+      endReason: this.world.endReason ?? 'time',
+    }
   }
 
   getScore(): number {

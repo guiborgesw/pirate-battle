@@ -1,0 +1,23 @@
+.score {
+  margin: 0.5rem 0 0;
+  font-size: 3.4rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #ffe8b0;
+  text-shadow: 0 3px 0 rgb(0 0 0 / 45%);
+}
+
+.meta {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: #cfe0f0;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
+
+.registration {
+  margin: 0.2rem 0 0.6rem;
+  font-size: 0.75rem;
+  color: #f2e6cf;
+}

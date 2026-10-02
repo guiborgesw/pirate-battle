@@ -1,0 +1,59 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f2e6cf;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  width: 100%;
+}
+
+.value {
+  min-width: 5.5rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffe8b0;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 45%);
+}
+
+.hint,
+.note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #cfe0f0;
+}
+
+.note {
+  margin-top: 0.2rem;
+  opacity: 0.85;
+}
+
+.warning {
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.4rem;
+  background: rgb(168 51 31 / 85%);
+  color: #ffe8b0;
+  font-size: 0.75rem;
+}
+
+.status {
+  margin: 0;
+  min-height: 1.1rem;
+  font-size: 0.75rem;
+  color: #ffe8b0;
+}

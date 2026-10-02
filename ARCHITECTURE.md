@@ -310,6 +310,34 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   reset field by field. The compact result panel here is a placeholder — M9 replaces it with the
   styled result screen and the registration status.
 
+## Screens, options and the last result (M9)
+
+- **One router, two rules.** `App.tsx` owns `loading → menu → (options | arena) → result`. A match in
+  progress is never written to storage, so reloading the page or leaving the arena returns to the menu
+  with nothing recorded; a finished match is persisted exactly once, in the same breath as the match
+  ending. `GameScreen` calls `onMatchEnd` behind a `finishedRef` guard, because `destroy()` also ends a
+  session internally — without that guard, abandoning a match would look exactly like finishing one.
+- **Screens are built from the UI atlas**, not from hand-made chrome: the `panel_menu` frame, the
+  `title_pirate_battle` banner, `button_primary_*` / `button_secondary_*` / `button_round_*` with the
+  control icons, over `ui_scene_background.png`. All sizes come from measured sprites. The panel keeps
+  the sprite's 384:480 ratio so its corner plates stay round — the mockups stretch the frame into a
+  landscape panel, and the spec leaves menu identity to the author, so that ratio is the one
+  deliberate difference.
+- **Options** expose the two parameters the spec names — game session time and enemy spawn time — as
+  steppers, matching `sample_options.png`. Stepping can only produce values inside the documented
+  bounds, hitting a bound is announced through an `aria-live` status rather than silently ignored, and
+  every change is persisted immediately. The one way invalid data can reach the screen is a corrupt or
+  hand-edited store, and that case is reported with `role="alert"` instead of being swallowed.
+- **The result screen** shows the score, the time actually played (so a match cut short by death
+  reports its real length, not the session length), how it ended, the registration status and both
+  actions. Registration is honestly `pending` until the API layer lands: the field exists so M11/M12
+  fill it in rather than invent it later.
+- **Storage is injectable**, which is what turns "survives a reload" into a headless assertion instead
+  of a browser ritual. The self-check writes options and a result through a fake backend and reads them
+  back, and proves that a corrupt store, an out-of-range stored value, a result played longer than its
+  session, an unknown ending and an unparseable timestamp are all refused rather than displayed as
+  fact. The browser run confirms the same round trip against real `localStorage`.
+
 ## Pending sections
 
 The API layer (M11) and the mock scenarios (M12) are filled in as those milestones land.

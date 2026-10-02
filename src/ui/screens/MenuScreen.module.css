@@ -1,0 +1,87 @@
+.tagline {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #cfe0f0;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.6rem;
+  width: 100%;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.control {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 0.4rem;
+  background: rgb(6 24 40 / 45%);
+}
+
+.iconRow {
+  display: inline-flex;
+  gap: 0.1rem;
+}
+
+.controlIcon {
+  width: 1.4rem;
+  height: 1.4rem;
+  image-rendering: pixelated;
+}
+
+.controlLabel {
+  font-size: 0.72rem;
+  color: #e6eef8;
+  text-align: left;
+}
+
+.controlKeys {
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ffe8b0;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.tabs > * {
+  flex: 1;
+}
+
+.lastResult {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: #ffe8b0;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 45%);
+}
+
+.status {
+  margin: 0;
+  min-height: 1rem;
+  font-size: 0.72rem;
+  color: #cfe0f0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

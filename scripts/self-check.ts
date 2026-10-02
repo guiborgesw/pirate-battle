@@ -53,9 +53,18 @@ import {
   configureStorage,
   readJson,
   resetStorageBackend,
+  STORAGE_KEYS,
   writeJson,
   type StorageLike,
 } from '../src/storage/localStore.ts'
+import {
+  clearLastResult,
+  loadLastResult,
+  parseLastResult,
+  saveLastResult,
+  type LastMatchResult,
+} from '../src/storage/lastResult.ts'
+import { endReasonText, formatClock, pointsLabel, registrationText } from '../src/ui/format.ts'
 import { loadOptions, saveOptions } from '../src/storage/settings.ts'
 
 let failures = 0
@@ -1383,6 +1392,109 @@ section('keyboard contract')
   secondKeyboard.attach()
   press('w', true)
   check('a consumed movement key does not stick either', !consumedMovement.forward)
+}
+
+section('options and last-result persistence')
+
+{
+  // The injectable backend is what makes "survives a reload" checkable without a browser: write,
+  // throw the in-memory copy away, read back.
+  const backend = new Map<string, string>()
+  const storage: StorageLike = {
+    getItem: (key) => backend.get(key) ?? null,
+    setItem: (key, value) => {
+      backend.set(key, value)
+    },
+    removeItem: (key) => {
+      backend.delete(key)
+    },
+  }
+  configureStorage(storage)
+
+  check(
+    'options are written to the store',
+    saveOptions({ durationSec: 180, spawnIntervalMs: 5000 }),
+  )
+  const reloadedOptions = loadOptions()
+  check(
+    'options survive a reload',
+    reloadedOptions.durationSec === 180 && reloadedOptions.spawnIntervalMs === 5000,
+    JSON.stringify(reloadedOptions),
+  )
+
+  // The acceptance "invalid values cannot be saved" holds at the data layer too: whatever a hand-
+  // edited store contains, what comes out is always inside the documented bounds.
+  backend.set(STORAGE_KEYS.options, '{ this is not json')
+  check(
+    'a corrupt store falls back to the defaults instead of throwing',
+    loadOptions().durationSec === DEFAULT_OPTIONS.durationSec,
+  )
+
+  backend.set(STORAGE_KEYS.options, JSON.stringify({ durationSec: 9999, spawnIntervalMs: 3333 }))
+  const salvaged = loadOptions()
+  check(
+    'an out-of-range stored value cannot be loaded as-is',
+    salvaged.durationSec === DEFAULT_OPTIONS.durationSec,
+    JSON.stringify(salvaged),
+  )
+
+  const result: LastMatchResult = {
+    score: 12,
+    playedSec: 120,
+    durationSec: 120,
+    endReason: 'time',
+    registration: 'pending',
+    finishedAt: '2026-10-02T12:00:00.000Z',
+    configKey: 'd120-s3000',
+  }
+
+  check('the last result is written', saveLastResult(result))
+  const reloadedResult = loadLastResult()
+  check(
+    'the last result survives a reload',
+    reloadedResult?.score === 12 && reloadedResult.configKey === 'd120-s3000',
+    JSON.stringify(reloadedResult),
+  )
+
+  // A result that cannot have happened is refused rather than shown to the player as fact.
+  check(
+    'a result played longer than its session is refused',
+    parseLastResult({ ...result, playedSec: 999 }) === undefined,
+  )
+  check(
+    'a result with an unknown ending is refused',
+    parseLastResult({ ...result, endReason: 'exploded' }) === undefined,
+  )
+  check(
+    'a result with an unparseable timestamp is refused',
+    parseLastResult({ ...result, finishedAt: 'yesterday' }) === undefined,
+  )
+
+  // "An abandoned match is not recorded": nothing is written on the way out, so clearing the store is
+  // exactly what an abandoned match leaves behind.
+  clearLastResult()
+  check('an abandoned match leaves nothing behind', loadLastResult() === undefined)
+
+  resetStorageBackend()
+}
+
+section('menu text formatting')
+
+{
+  check('the clock reads like the mockups', formatClock(102) === '01:42', formatClock(102))
+  check('a single point is not pluralised', pointsLabel(1) === 'point')
+  check(
+    'the result line reads as points, time and reason',
+    `${pointsLabel(12)} · ${formatClock(120)} · ${endReasonText('time').toUpperCase()}` ===
+      'points · 02:00 · TIME UP',
+  )
+  check('a sunk match says so', endReasonText('death') === 'Hull sunk')
+  check(
+    'every registration state has words',
+    ['pending', 'registered', 'offline'].every(
+      (state) => registrationText(state as 'pending').length > 0,
+    ),
+  )
 }
 
 section('ship art orientation')

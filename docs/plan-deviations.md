@@ -90,3 +90,20 @@ Two while implementing M7:
   played, end reason, registration status, Play Again, Main Menu), so M8 only implements what its
   acceptance needs: the match stops, the score is readable, and "Play again" is a real
   `destroy()` + new session.
+
+## F. Additions while implementing M9
+
+- **The wooden panel keeps the sprite's ratio.** `panel_menu.png` is 384x480 (portrait) while the
+  challenge mockups stretch the frame into a landscape panel. Stretching it 1.6x sideways would make
+  its round corner plates oval, and the spec leaves the menu's visual identity to the author ("a seu
+  critério … coerente com os assets"), so the frame stays at its own ratio and only the content inside
+  is laid out like the mockups.
+- **Ranking and Match History are placeholders.** They exist as buttons with a "Soon" badge, as in
+  `sample_menu.png`, and pressing one announces through `aria-live` that the data arrives with the API
+  milestone. The alternative — a screen that pretends to load and then shows nothing — would read as a
+  bug in the delivery.
+- **The menu carries a "Last match: …" line**, which the mockup does not show. The spec requires the
+  last result to be persisted; making it visible is how that promise is verifiable to the player
+  rather than only true inside `localStorage`.
+- **The M8 result panel was deleted, not kept.** The placeholder in `Hud.tsx` is gone: with a real
+  result screen, leaving the old panel would mean two places claiming to show the same match.
