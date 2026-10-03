@@ -36,7 +36,9 @@ export function HistoryTable({ playerId }: HistoryTableProps): ReactNode {
         <caption>Your recent battles</caption>
         <thead>
           <tr>
-            <th scope="col">Date</th>
+            <th scope="col" className={styles.played}>
+              Date
+            </th>
             <th scope="col">Points</th>
             <th scope="col">Duration</th>
             <th scope="col">Result</th>

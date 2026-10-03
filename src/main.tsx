@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import { createQueryClient } from './api/queryClient.ts'
 import { resolveScenario } from './mocks/scenarios.ts'
+import { markMocksUnavailable } from './mocks/status.ts'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -26,6 +27,9 @@ async function startMocks(): Promise<void> {
       serviceWorker: { url: `${import.meta.env.BASE_URL}mockServiceWorker.js` },
     })
   } catch (error) {
+    // Recorded, not just logged: the tabs that read the mock API can then explain the failure on screen
+    // rather than showing an error with no reason attached to it.
+    markMocksUnavailable()
     console.warn('Mock API unavailable; the ranking and history tabs will report errors.', error)
   }
 }

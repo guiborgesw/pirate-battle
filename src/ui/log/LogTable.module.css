@@ -99,6 +99,14 @@
   justify-content: center;
   gap: 1rem;
   margin-top: 0.6rem;
+  /*
+   * The rows scroll inside the frame when a page is taller than the panel, so the pager has to stay put:
+   * pinned to the bottom of the visible area, in the panel's own colour, and the content reserves its
+   * height (see .content's padding-bottom) so the last row is never trapped behind it.
+   */
+  position: sticky;
+  bottom: 0;
+  background: #233343;
 }
 
 .pageLabel {
@@ -118,7 +126,35 @@
     padding: 0.2rem 0.35rem;
   }
 
+  /*
+   * The fixed column widths are what pushed the table past the wooden frame on a narrow screen with a
+   * large root font. At this size the columns share whatever room there is instead of each claiming a
+   * rem count that adds up to more than the panel.
+   */
+  .rank,
+  .points,
+  .played,
+  .duration,
+  .result {
+    width: auto;
+  }
+
   .pager {
     margin-top: 0.4rem;
+  }
+}
+
+/*
+ * Below this width a four-column table with single-word headers ("DURATION", "RESULT") cannot fit inside
+ * the frame at a font size that is still worth reading, so the secondary column — the date on the match
+ * history, the played-at on the ranking — steps aside. A phone then shows what the tab is actually about
+ * instead of a scrollbar. The breakpoint is in `rem` on purpose: the width the table needs scales with the
+ * root font, so the point at which it stops fitting has to scale with it too.
+ *
+ * The scroll container on the log's content stays as the guarantee for whatever this does not cover.
+ */
+@media (max-width: 22rem) {
+  .played {
+    display: none;
   }
 }

@@ -41,7 +41,9 @@ export function RankingTable({ configKey, playerId }: RankingTableProps): ReactN
             <th scope="col">Rank</th>
             <th scope="col">Captain</th>
             <th scope="col">Points</th>
-            <th scope="col">Played</th>
+            <th scope="col" className={styles.played}>
+              Played
+            </th>
           </tr>
         </thead>
         <tbody>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { areMocksAvailable } from '../../mocks/status.ts'
 import styles from './QueryStates.module.css'
 
 export type QueryStateProps = {
@@ -32,6 +33,14 @@ export function QueryState({
         <p className={styles.message} role="alert">
           {error.message || 'The request failed.'}
         </p>
+        {/* When the mock API never started, "the request failed" is a symptom with a known cause. */}
+        {!areMocksAvailable() && (
+          <p className={styles.hint} data-testid="query-mocks-hint">
+            This browser blocked the mock API&apos;s service worker, so there is nothing for this
+            tab to read. The rest of the game works normally — try a normal (non-private) window
+            without service-worker blocking.
+          </p>
+        )}
         <button className={styles.retry} type="button" data-testid="query-retry" onClick={onRetry}>
           Try again
         </button>

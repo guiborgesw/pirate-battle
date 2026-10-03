@@ -8,16 +8,29 @@
 /*
  * The log needs a table's width, so unlike the menu this frame follows the mockups and stretches the
  * wooden panel: a 384x480 sprite across a wide board. The corner plates tolerate it at this size.
+ *
+ * The size and height follow the mockup's proportions rather than filling the window: there the panel is
+ * about three quarters of the width and two thirds of the height, with the rows inset from the decorative
+ * trim. Filling the window instead left the table flush against the frame and floating in the middle of it.
  */
 .board {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
-  width: min(64rem, 94vw);
-  min-height: min(38rem, 92dvh);
-  /* Extra room at the bottom so the last button sits inside the frame instead of over its rail. */
-  padding: 2.5rem 3rem 3.5rem;
+  width: min(90rem, 92vw);
+  min-height: min(30rem, 86dvh);
+  /* The panel never grows past the window: the rows scroll inside it instead of pushing the last button
+     off screen. With fifteen rows the frame used to run past the viewport and cut the main menu off. */
+  max-height: 94dvh;
+  overflow: hidden;
+  /*
+   * The horizontal padding is a percentage because the frame is one stretched 384x480 sprite: its
+   * decorative inner trim is part of the artwork, so it eats the same *proportion* of the panel at every
+   * size — measured at 8.5% per side. Fixed padding left the table 70-80px wider than the usable interior
+   * on a wide screen, so the row bands ran over the golden trim (the reported "passes its container").
+   */
+  padding: 2.5rem 8.5% 3.5rem;
   background: url('/assets/png/ui/menu/panel_menu.png') center / 100% 100% no-repeat;
 }
 
@@ -75,24 +88,49 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  justify-content: center;
+  /* The rows start under the subtitle, as in the mockup, instead of floating in the middle of the frame. */
+  justify-content: flex-start;
   width: 100%;
+  /*
+   * A flex item's automatic minimum size is the min-content size of its contents, and a table with fixed
+   * column widths has a min-content size wider than the panel — so without this the table *grows past*
+   * the wooden frame instead of fitting inside it (measured: 58px past the wood at a 24px root font on a
+   * 360px screen). `min-width: 0` lets the item shrink, and the overflow is the backstop for the one case
+   * a table cannot shrink below: then it scrolls inside the frame rather than over it.
+   */
+  min-width: 0;
+  overflow-x: auto;
+  /* Rows scroll inside the frame rather than stretching it past the window. The bottom padding is the
+     sticky pager's height, so the last row can always be scrolled clear of it. */
+  overflow-y: auto;
+  padding-bottom: 2.6rem;
 }
 
 @media (max-height: 34rem), (max-width: 48rem) {
   .board {
     min-height: 96dvh;
     gap: 0.25rem;
-    padding: 1.2rem 1.2rem 1.7rem;
+    padding: 1.2rem 8.5% 1.7rem;
   }
 
   .title {
     font-size: 1.35rem;
   }
 
+  /*
+   * Two tabs at a fixed 8.5rem are wider than a 320px screen once the root font grows, so the tab row
+   * wraps instead of escaping the frame, and each tab can also shrink to a share of the viewport.
+   */
+  .tabs {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
   .tab,
   .tabActive {
-    min-width: 8.5rem;
+    min-width: min(8.5rem, 42vw);
     min-height: 2rem;
     font-size: 0.75rem;
   }

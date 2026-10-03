@@ -3,13 +3,26 @@
   place-items: center;
   min-height: 12rem;
   margin: 0;
+  padding: 0 0.5rem;
   font-size: 0.95rem;
   color: #cfe0f0;
+  /* Long copy — the error message and the notice below it — has to wrap inside the frame, whatever the
+     root font size, instead of widening the panel. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .message {
   margin: 0 0 0.6rem;
   color: #ffd0c4;
+}
+
+.hint {
+  margin: 0 0 0.7rem;
+  max-width: 32rem;
+  font-size: 0.82rem;
+  color: #9fb4c9;
 }
 
 .retry {
@@ -31,6 +44,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .updating {

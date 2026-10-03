@@ -144,28 +144,27 @@ Two while implementing M7:
   it, "the tabs refetch when they are shown again" would be an assumption about React Query rather than a
   measurement — the browser run shows the ranking counter going 2 → 3 on a tab switch.
 
-## K. Additions while implementing M14
+## I. Additions while implementing M12
 
-- **The suite uses the browser already installed on the machine.** Playwright normally wants its own
-  Chromium build (~600 MB to download). `channel: 'msedge'` runs the system's Edge — a Chromium — with
-  no download at all, so `pnpm i && pnpm test:e2e` works on a machine that cannot fetch a browser. The
-  project names stay `desktop-chromium` / `mobile-chromium` because that is what they are.
-- **One worker, deliberately.** The specs drive a real simulation against one preview server and each
-  spec is already a full journey; the acceptance is "green twice in a row", so determinism is worth more
-  than wall-clock time here.
-- **A thirteenth spec file for the visual regression.** The plan maps files 1:1 to the twelve flows and
-  asks for visual baselines separately; `13-visuals.spec.ts` keeps the mapping clean instead of hiding
-  screenshots inside an unrelated flow.
-- **Baselines are per project.** A 1280x720 desktop frame and a Pixel 7 landscape frame are different
-  pictures, so `snapshotPathTemplate` files them under `e2e/__screenshots__/<project>/`. They were
-  recorded on Windows with Edge: on another platform run `pnpm test:e2e:update` once and commit the
-  result — the suite says so itself when the images differ.
-- **The M12/M13 measurement scripts stay.** `e2e/m12-registration.mjs`, `m13-axe.mjs` and `m13-mobile.mjs`
-  print what they measured rather than asserting, which is what made the earlier acceptance arguments
-  checkable; the Playwright specs are the ones that fail a build.
-- **`steerTowards` steers in a loop instead of computing a turn.** It reads the ship, presses `a` or `d`
-  for a hundred milliseconds, then sails, until it arrives or stops moving. A test that derived the turn
-  from the rotation rate would break the day the ship is retuned — and being retuned is not a bug.
+- **The registration flow is an explicit async routine, not a `useMutation`.** Plan §1.9 describes
+  `useRegisterMatch = useMutation`. A mutation object gets a new identity on every render, so a callback
+  depending on it re-arms any effect that uses it: the first version re-sent the same match on every
+  render, forever, and the mock log filled with PUTs the same second. The flush is now a stable
+  `useCallback` doing one `flushPending` at a time, guarded by a ref.
+- **The result screen's status is derived from the queue, not tracked beside it.** "Still queued" and
+  "not registered yet" are the same question, and the queue is only emptied by the server's own
+  confirmation. The first version kept a parallel per-match map of statuses and sat on "Registering…"
+  while the queue was already empty and the record was already stored — the storage said `saved` and the
+  screen said otherwise, which is exactly the kind of disagreement a second source of truth produces.
+- **`LastMatchResult` gained `matchId`** so a confirmed registration marks exactly the result it belongs
+  to. A result stored by an earlier build (no id) is refused by the parser and shows as "no finished
+  match yet" rather than with a status that belongs to someone else's match.
+- **`e2e/m12-registration.mjs` drives the acceptance in a real browser** (the system's Edge, so no
+  Chromium download): the plan's acceptance is about a queue surviving a browser reload, not about a
+  function returning. Run `pnpm preview` and then `node e2e/m12-registration.mjs`; it prints every
+  measurement it makes. M14's Playwright suite grows out of it.
+- **While a flush is in flight, any match still in the queue reads as "saving".** For a match from an
+  earlier session that is the honest reading of one shared queue, and it lasts seconds.
 
 ## J. Additions while implementing M13
 
@@ -189,24 +188,61 @@ Two while implementing M7:
   design, but React's compiler rules are right to object to a component mutating what looks like a prop,
   so the mutation lives behind `createTouchWriter` where it reads as what it is.
 
-## I. Additions while implementing M12
+## K. Additions while implementing M14
 
-- **The registration flow is an explicit async routine, not a `useMutation`.** Plan §1.9 describes
-  `useRegisterMatch = useMutation`. A mutation object gets a new identity on every render, so a callback
-  depending on it re-arms any effect that uses it: the first version re-sent the same match on every
-  render, forever, and the mock log filled with PUTs the same second. The flush is now a stable
-  `useCallback` doing one `flushPending` at a time, guarded by a ref.
-- **The result screen's status is derived from the queue, not tracked beside it.** "Still queued" and
-  "not registered yet" are the same question, and the queue is only emptied by the server's own
-  confirmation. The first version kept a parallel per-match map of statuses and sat on "Registering…"
-  while the queue was already empty and the record was already stored — the storage said `saved` and the
-  screen said otherwise, which is exactly the kind of disagreement a second source of truth produces.
-- **`LastMatchResult` gained `matchId`** so a confirmed registration marks exactly the result it belongs
-  to. A result stored by an earlier build (no id) is refused by the parser and shows as "no finished
-  match yet" rather than with a status that belongs to someone else's match.
-- **`e2e/m12-registration.mjs` drives the acceptance in a real browser** (the system's Edge, so no
-  Chromium download): the plan's acceptance is about a queue surviving a browser reload, not about a
-  function returning. Run `pnpm preview` and then `node e2e/m12-registration.mjs`; it prints every
-  measurement it makes. M14's Playwright suite grows out of it.
-- **While a flush is in flight, any match still in the queue reads as "saving".** For a match from an
-  earlier session that is the honest reading of one shared queue, and it lasts seconds.
+- **The suite uses the browser already installed on the machine.** Playwright normally wants its own
+  Chromium build (~600 MB to download). `channel: 'msedge'` runs the system's Edge — a Chromium — with
+  no download at all, so `pnpm i && pnpm test:e2e` works on a machine that cannot fetch a browser. The
+  project names stay `desktop-chromium` / `mobile-chromium` because that is what they are.
+- **One worker, deliberately.** The specs drive a real simulation against one preview server and each
+  spec is already a full journey; the acceptance is "green twice in a row", so determinism is worth more
+  than wall-clock time here.
+- **A thirteenth spec file for the visual regression.** The plan maps files 1:1 to the twelve flows and
+  asks for visual baselines separately; `13-visuals.spec.ts` keeps the mapping clean instead of hiding
+  screenshots inside an unrelated flow.
+- **Baselines are per project.** A 1280x720 desktop frame and a Pixel 7 landscape frame are different
+  pictures, so `snapshotPathTemplate` files them under `e2e/__screenshots__/<project>/`. They were
+  recorded on Windows with Edge: on another platform run `pnpm test:e2e:update` once and commit the
+  result — the suite says so itself when the images differ.
+- **The M12/M13 measurement scripts stay.** `e2e/m12-registration.mjs`, `m13-axe.mjs` and `m13-mobile.mjs`
+  print what they measured rather than asserting, which is what made the earlier acceptance arguments
+  checkable; the Playwright specs are the ones that fail a build.
+- **`steerTowards` steers in a loop instead of computing a turn.** It reads the ship, presses `a` or `d`
+  for a hundred milliseconds, then sails, until it arrives or stops moving. A test that derived the turn
+  from the rotation rate would break the day the ship is retuned — and being retuned is not a bug.
+- **A finite state hook must not outlive its game.** `advance()` — the test hook that runs the loop by
+  hand — now steps nothing while the match is paused or finished. It used to run the simulation anyway,
+  which quietly broke the very guarantee the pause test was checking, and the failure looked like a
+  gameplay bug rather than an instrument that lied.
+
+## L. Fixes found by reviewing the deployed build
+
+- **The log tables ran over the frame's decorative trim — the real cause was in the artwork, not the
+  layout.** Reported from the live site as "the match history passes its container". Two earlier attempts
+  fixed real-but-different problems (`min-width: 0` on a flex item whose min-content is a table's
+  min-content, and column/breakpoint tuning) and did not change what the reporter saw, because both
+  measured the DOM. The frame is one 384x480 sprite stretched to the panel, so its golden inner trim is
+  _inside the artwork_ and eats a fixed **proportion** of the panel: measured on the sprite, the usable
+  interior starts at x=28/384 = **7.29%** and ends at **7.55%** in from each edge. The panel's padding was
+  a fixed `3rem` = 3.3%, so at a 1440px panel the table (100% of a 1344px content box) was **~58px wider
+  than the usable interior on each side** and the row bands crossed the gold. The fix is a percentage
+  padding (`8.5%`), which lands the table ~16px inside the trim at every size — the geometry agrees with
+  the three independent measurements (the sprite's insets, the DOM boxes, and the earlier "58px past the
+  wood"). Lesson recorded: when a frame is a stretched sprite, measure the sprite.
+- **The panel could grow past the window and cut the last button off.** With fifteen rows the frame ran
+  below the viewport and the main menu button was clipped. The panel now has `max-height: 94dvh` with
+  `overflow: hidden`, and the rows scroll inside it — so the frame always fits the window and the button
+  is always reachable. The pager is pinned to the bottom of the visible area (sticky) with the content
+  reserving its height, so it stays visible on a long page without trapping the last row behind it.
+- **The tabs now say why they are empty when the mock API could not start.** A browser or extension that
+  blocks service workers makes `worker.start()` throw; `main.tsx` catches it so the game still runs, but
+  the ranking and history were left with a bare "the request failed" and no reason. `mocks/status.ts`
+  records that failure, and the error state adds a sentence naming it: a symptom with a known cause should
+  not send a reviewer hunting.
+- **The deploy publishes the built `dist/` rather than a remote build.** `vercel deploy --prod` from
+  `dist/` uploads 14MB and is ready in seconds instead of queueing a build on Vercel's side, which matters
+  when the link is about to be sent to someone. Everything needed to build it stays in the repository
+  (`vercel.json`, the lockfile, the toolchain pin) — the choice is about delivery time, not about hiding
+  how it is built.
+- **The README carries the live link and two screenshots** captured from the deployed site itself, so a
+  reviewer sees the game before running anything.
