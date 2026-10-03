@@ -513,6 +513,15 @@ export class GameSession {
 
   advance(ms: number): number {
     this.loop.setManual(true)
+
+    // A paused or finished match steps nothing. The hook exists to run the real rules faster than real
+    // time, not to run them when the game itself would not — otherwise it would lie about the very
+    // behaviour (a frozen clock) that the pause is supposed to guarantee.
+    if (this.status !== 'running') {
+      this.publish()
+      return 0
+    }
+
     const steps = this.loop.advance(ms)
     this.publish()
     return steps

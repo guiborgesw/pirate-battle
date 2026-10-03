@@ -85,10 +85,6 @@ export function Hud({ snapshot, onExit, onPause, onResume }: HudProps) {
         >
           {formatClock(snapshot.remainingSec)}
         </span>
-        {/* M13 replaces this region with throttled announcements (score changes, 30 s marks, 10 s). */}
-        <p className={styles.srOnly} role="status" aria-live="polite">
-          {`Score ${snapshot.score}, ${snapshot.remainingSec} seconds left, ${snapshot.status}.`}
-        </p>
       </div>
 
       <div className={styles.controls}>

@@ -144,6 +144,29 @@ Two while implementing M7:
   it, "the tabs refetch when they are shown again" would be an assumption about React Query rather than a
   measurement — the browser run shows the ranking counter going 2 → 3 on a tab switch.
 
+## K. Additions while implementing M14
+
+- **The suite uses the browser already installed on the machine.** Playwright normally wants its own
+  Chromium build (~600 MB to download). `channel: 'msedge'` runs the system's Edge — a Chromium — with
+  no download at all, so `pnpm i && pnpm test:e2e` works on a machine that cannot fetch a browser. The
+  project names stay `desktop-chromium` / `mobile-chromium` because that is what they are.
+- **One worker, deliberately.** The specs drive a real simulation against one preview server and each
+  spec is already a full journey; the acceptance is "green twice in a row", so determinism is worth more
+  than wall-clock time here.
+- **A thirteenth spec file for the visual regression.** The plan maps files 1:1 to the twelve flows and
+  asks for visual baselines separately; `13-visuals.spec.ts` keeps the mapping clean instead of hiding
+  screenshots inside an unrelated flow.
+- **Baselines are per project.** A 1280x720 desktop frame and a Pixel 7 landscape frame are different
+  pictures, so `snapshotPathTemplate` files them under `e2e/__screenshots__/<project>/`. They were
+  recorded on Windows with Edge: on another platform run `pnpm test:e2e:update` once and commit the
+  result — the suite says so itself when the images differ.
+- **The M12/M13 measurement scripts stay.** `e2e/m12-registration.mjs`, `m13-axe.mjs` and `m13-mobile.mjs`
+  print what they measured rather than asserting, which is what made the earlier acceptance arguments
+  checkable; the Playwright specs are the ones that fail a build.
+- **`steerTowards` steers in a loop instead of computing a turn.** It reads the ship, presses `a` or `d`
+  for a hundred milliseconds, then sails, until it arrives or stops moving. A test that derived the turn
+  from the rotation rate would break the day the ship is retuned — and being retuned is not a bug.
+
 ## J. Additions while implementing M13
 
 - **The touch controls are a stick plus three guns, not five buttons.** Plan §1.7 says "on-screen buttons";

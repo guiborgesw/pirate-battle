@@ -466,6 +466,31 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   rows. The axe scan (`e2e/m13-axe.mjs`, `@axe-core/playwright`) then checks the rendered screens for
   real: **zero violations** on menu, options, result, both log tabs and the paused arena.
 
+## The end-to-end suite (M14)
+
+- **Against the built app, in two projects.** `webServer` runs `pnpm build && pnpm preview`, so the tests
+  exercise the artefact that gets deployed; `desktop-chromium` is 1280x720 and `mobile-chromium` is a
+  Pixel 7 in landscape, and the visual baselines are per project because the two frames are different
+  pictures.
+- **Real rules, controlled time.** Every spec opens `?testHooks=1&seed=1&scenario=<name>` and hands the
+  clock to the test with `useManualClock()`, then runs the simulation for real via `advance(ms)`. Combat
+  tests press the game's own keys (`hold('Space', 120)`) and check what happened to the world; nothing is
+  poked into the simulation from outside except spawns, which is what `spawnEnemy` is for.
+- **A fixture so the specs read like the behaviour.** `e2e/fixtures.ts` wraps the hooks in an `App`
+  (`play`, `hold`, `advance`, `finishByTime`, `finishByDeath`, `steerTowards`, `state`, `shots`,
+  `apiCalls`) and types `window.__pb`, so no spec needs `any` or a hand-written evaluate.
+- **`steerTowards` is a control loop, not arithmetic.** It reads the ship, decides `a` or `d` for a
+  hundred milliseconds, then sails, until it arrives or stops moving. A test that computed the turn from
+  the rotation rate would break the day the ship is retuned for being correct.
+- **One worker.** The specs drive a real simulation against a shared preview server; a suite that passes
+  twice in a row is worth more here than one that finishes early. The acceptance is exactly that: green
+  twice, and a deliberately broken collision rule failing a test (done, and recorded in
+  `docs/plan-deviations.md` §K).
+- **Visual regression on what the challenge names** — the menu, the arena after two seeded seconds, and
+  the result — with the match clock masked, because that is the one value on screen that legitimately
+  depends on how fast the browser got there.
+
 ## Pending sections
 
-The end-to-end Playwright suite, with visual regression baselines, is filled in with M14.
+The performance evidence (`?perf=1`, a 180-second match, five start/play/exit cycles) and the deploy are
+filled in with M15/M16.

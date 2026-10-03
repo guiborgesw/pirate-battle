@@ -5,16 +5,17 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M13 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> **Status:** M1–M14 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
 > the match clock with pause/end/restart, the menu, options and result screens with persistence, combat
 > feedback with sound, the ranking and match history read through a mock REST API, finished matches
 > registered once each — queued locally before the request, retried after a failure, and recovered after
-> a reload without ever duplicating — and touch controls, a portrait notice, a responsive HUD and an
-> accessibility pass that a real axe scan comes back clean on. The end-to-end Playwright suite arrives
-> with M14; the milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it
-> is recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
+> a reload without ever duplicating — touch controls, a portrait notice, a responsive HUD and an
+> accessibility pass that a real axe scan comes back clean on, and an end-to-end Playwright suite with
+> visual baselines. Performance evidence and the deploy arrive with M15/M16; the milestone map is in
+> [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
+> [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
 
@@ -139,6 +140,39 @@ the page. Sounds are best-effort: a missing sound is reported and the game falls
 
 To reproduce a blocked texture deterministically (used by the E2E suite too), append
 `?assets=missing`: the first attempt fails, any retry succeeds.
+
+## End-to-end tests
+
+```
+pnpm test:e2e            # desktop-chromium and mobile-chromium, HTML report in playwright-report/
+pnpm test:e2e:update     # same, rewriting the visual baselines
+```
+
+The suite runs against the **built** app (`webServer` builds and previews it), in two projects: a
+1280x720 desktop and a Pixel 7 in landscape. Each spec starts from a fresh browser context, so local
+storage and the mock database begin empty, and each uses `?testHooks=1&seed=1&scenario=<name>` with the
+simulation clock handed to the test — the rules, collisions and rendering run for real, only time is
+under control. The files map one to one to the twelve flows the challenge lists:
+
+| File                            | Flow                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| `01-options.spec.ts`            | Navigation, option validation and persistence                  |
+| `02-assets.spec.ts`             | Asset loading, a blocked load and the retry                    |
+| `03-movement.spec.ts`           | Sailing, turning, arena bounds and island collisions           |
+| `04-weapons.spec.ts`            | Bow gun, cooldown, broadside volley, damage and single scoring |
+| `05-enemies.spec.ts`            | Chaser and Shooter behaviour, spawn schedule                   |
+| `06-end-and-restart.spec.ts`    | End by time and by death, stopped simulation, clean restart    |
+| `07-pause.spec.ts`              | Pause, focus loss, resume without the clock moving             |
+| `08-result-persistence.spec.ts` | Result screen and the last match after a refresh               |
+| `09-abandon-and-touch.spec.ts`  | Abandonment, repeated navigation, touch controls               |
+| `10-log-tabs.spec.ts`           | Ranking and history: loading, pagination, empty and error      |
+| `11-registration.spec.ts`       | Registration, both tabs, pending recovery after a refresh      |
+| `12-retry-and-stale.spec.ts`    | Retry after a timeout without duplicating, late answers        |
+| `13-visuals.spec.ts`            | Visual regression: menu, seeded arena, result                  |
+
+`e2e/fixtures.ts` holds the shared fixture (`app.play()`, `app.hold('w', 1200)`, `app.advance(30_000)`,
+`app.finishByDeath()`), so the specs read like the behaviour they describe. Visual baselines live in
+`e2e/__screenshots__/<project>/` and are versioned.
 
 ## Ranking and Match History
 
