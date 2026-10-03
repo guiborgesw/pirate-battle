@@ -437,6 +437,35 @@ Debug URL flags: `?testHooks=1`, `?dpr=2` (force the retina sheets on a 1x displ
   every render, which re-armed the effect that flushes and re-sent the same match in a loop; an explicit
   async routine is stable and says what it does. Recorded in `docs/plan-deviations.md` §I.
 
+## Touch, portrait and accessibility (M13)
+
+- **One input state, three devices.** The touch overlay writes into the same `InputState` the keyboard
+  writes into, so the simulation never learns which one is playing — the plan's §1.7 promise, kept by
+  construction rather than by care. The writing is exposed as a named adapter (`createTouchWriter`)
+  because mutating shared state from an event handler is deliberate here and React's compiler rules are
+  right to object to raw mutation in a component.
+- **A stick, not five buttons.** The left thumb gets a stick that carries thrust and turn together (up is
+  ahead, sideways is a turn, diagonal is W+A); the right thumb gets the three guns. Multi-touch is what
+  makes steering and firing possible at the same time, so the stick remembers the pointer that owns it
+  and each gun handles its own. `?touch=1` forces the controls on, which is how the desktop run verifies
+  them: the stick moved the ship −153 px and a gun button took the shot count from 0 to 3.
+- **The clock stops when the arena cannot be seen.** Portrait phones get a rotate notice and an automatic
+  pause (`pauseReason: 'orientation'`), so the match never runs down behind the message. Rotating back
+  leaves it paused on purpose: resuming is the player's decision, not a side effect of moving a phone.
+- **Responsive by height, because the art is.** The wooden panel is sized by `min(44rem, 94dvh)` with the
+  sprite's own ratio, so a 640x360 landscape squeezes it; media queries shrink the paddings, the fonts,
+  the HUD band and the log table rather than rescaling the art. Measured at 640x360: the HUD occupies
+  `[6, 6, 627, 40]` — inside the viewport, nothing clipped.
+- **The HUD speaks, and only when it should.** The announcement is a pure function of the snapshot whose
+  text is _constant inside each thirty-second stretch_ (and once more at ten seconds), so a polite live
+  region fires when a bucket is crossed, when the score changes, or when the match pauses — and has
+  nothing to say in between. "Avoid announcing every frame" is therefore structural: there is no timer,
+  no effect and no state to keep in step.
+- **Contrast is measured, not eyeballed.** `contrastRatio` implements the WCAG formula and the gate
+  asserts every foreground/background pair the UI actually uses, from gold-on-wood titles to the table
+  rows. The axe scan (`e2e/m13-axe.mjs`, `@axe-core/playwright`) then checks the rendered screens for
+  real: **zero violations** on menu, options, result, both log tabs and the paused arena.
+
 ## Pending sections
 
-Touch controls, the accessibility pass and the end-to-end Playwright suite are filled in with M13/M14.
+The end-to-end Playwright suite, with visual regression baselines, is filled in with M14.

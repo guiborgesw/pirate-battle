@@ -5,15 +5,16 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
-> **Status:** M1–M12 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
+> **Status:** M1–M13 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
 > the match clock with pause/end/restart, the menu, options and result screens with persistence, combat
-> feedback with sound, the ranking and match history read through a mock REST API, and finished matches
+> feedback with sound, the ranking and match history read through a mock REST API, finished matches
 > registered once each — queued locally before the request, retried after a failure, and recovered after
-> a reload without ever duplicating. Mobile, accessibility and the end-to-end suite arrive with M13/M14;
-> the milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is
-> recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
+> a reload without ever duplicating — and touch controls, a portrait notice, a responsive HUD and an
+> accessibility pass that a real axe scan comes back clean on. The end-to-end Playwright suite arrives
+> with M14; the milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it
+> is recorded in [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
 
@@ -166,8 +167,10 @@ the `timeout-after-save` and `offline-at-end` scenarios exist to demonstrate.
 The acceptance for all of that runs in a real browser:
 
 ```
-pnpm preview            # serves the built app on :4173
+pnpm preview                    # serves the built app on :4173
 node e2e/m12-registration.mjs   # drives Edge, prints every measurement
+node e2e/m13-axe.mjs            # axe scan: menu, options, result, both log tabs, paused arena
+node e2e/m13-mobile.mjs         # touch controls, portrait notice and the HUD at 640x360
 ```
 
 ## Documentation

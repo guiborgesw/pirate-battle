@@ -103,3 +103,27 @@
   letter-spacing: 0.08em;
   vertical-align: middle;
 }
+
+/* Height is what the wooden panel is driven by, so a short viewport is what squeezes it. */
+@media (max-height: 30rem) {
+  .panel {
+    height: min(30rem, 96dvh);
+    gap: 0.4rem;
+    padding: 1.9rem 1.4rem;
+  }
+
+  .banner {
+    width: min(13rem, 68%);
+  }
+
+  .screenTitle {
+    font-size: 1.3rem;
+  }
+
+  .primary,
+  .secondary {
+    width: min(12.5rem, 86%);
+    min-height: 2.2rem;
+    font-size: 0.9rem;
+  }
+}

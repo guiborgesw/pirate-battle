@@ -1,6 +1,7 @@
 import type { HudSnapshot } from '../../game/GameSession.ts'
 import { TIME_WARNING_SEC } from '../../game/audio/alerts.ts'
 import { formatClock } from '../format.ts'
+import { announcementFor } from './announce.ts'
 import { PauseDialog } from './PauseDialog.tsx'
 import { noteHudRender } from './renderCounter.ts'
 import styles from './Hud.module.css'
@@ -26,6 +27,17 @@ export function Hud({ snapshot, onExit, onPause, onResume }: HudProps) {
 
   return (
     <div className={styles.hud}>
+      {/* Score, time and match state in words as well as pixels (spec §7). The text only changes when a
+          thirty-second bucket is crossed, the score moves, or the match pauses — so a polite live region
+          has nothing to announce between those moments, which is the "avoid announcing every frame" rule
+          holding by construction rather than by discipline. */}
+      <p className={styles.srOnly} role="status" aria-live="polite" data-testid="hud-announcement">
+        {announcementFor({
+          score: snapshot.score,
+          remainingSec: snapshot.remainingSec,
+          paused: snapshot.status === 'paused',
+        })}
+      </p>
       <div className={styles.group}>
         <img
           className={styles.icon}

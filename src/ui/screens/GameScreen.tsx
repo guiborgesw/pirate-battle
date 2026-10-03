@@ -3,8 +3,15 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import type { LoadedAssets } from '../../game/assets/loadAssets.ts'
 import { GameSession, type HudSnapshot, type MatchOutcome } from '../../game/GameSession.ts'
 import { setCurrentSession } from '../../game/sessionRegistry.ts'
+import {
+  portraitOverlayVisible,
+  touchControlsVisible,
+  type ViewportConditions,
+} from '../../game/input/touchIntent.ts'
 import type { GameConfig } from '../../config/gameConfig.ts'
 import { Hud } from '../hud/Hud.tsx'
+import { PortraitOverlay } from './PortraitOverlay.tsx'
+import { TouchInput } from '../touch/TouchInput.tsx'
 import styles from './GameScreen.module.css'
 
 export type GameScreenProps = {
@@ -28,6 +35,40 @@ const IDLE_SNAPSHOT: HudSnapshot = {
 
 const noop = (): void => {
   // No session mounted yet: nothing to unsubscribe from.
+}
+
+export type { ViewportConditions }
+
+function readViewportConditions(): ViewportConditions {
+  return {
+    coarsePointer: window.matchMedia('(pointer: coarse)').matches,
+    portrait: window.matchMedia('(orientation: portrait)').matches,
+    width: window.innerWidth,
+    touchForced: new URLSearchParams(window.location.search).get('touch') === '1',
+  }
+}
+
+/**
+ * Touch, orientation and size are all read from the same place, on resize and rotation. The listeners
+ * (rather than a poll in an effect) are also what keep this component's render free of side effects.
+ */
+function useViewportConditions(): ViewportConditions {
+  const [conditions, setConditions] = useState<ViewportConditions>(readViewportConditions)
+
+  useEffect(() => {
+    const update = (): void => {
+      setConditions(readViewportConditions())
+    }
+
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+    }
+  }, [])
+
+  return conditions
 }
 
 export function GameScreen({ config, assets, seed, onExit, onMatchEnd }: GameScreenProps) {
@@ -100,10 +141,27 @@ export function GameScreen({ config, assets, seed, onExit, onMatchEnd }: GameScr
     sessionRef.current?.resume()
   }, [])
 
+  const conditions = useViewportConditions()
+  const showTouch = touchControlsVisible(conditions)
+  const showPortrait = portraitOverlayVisible(conditions)
+
+  // Turning the phone upright hides the arena, so the match waits instead of running down behind the
+  // message. Rotating back leaves it paused on purpose: resuming is the player's decision, not a
+  // side effect of moving a phone.
+  useEffect(() => {
+    if (!showPortrait) return
+    const active = sessionRef.current
+    if (active?.getSnapshot().status === 'running') active.pause('orientation')
+  }, [showPortrait])
+
+  const inputState = session?.getInputState()
+
   return (
     <main className={styles.screen} data-testid="arena">
       <div className={styles.canvasHost} ref={hostRef} />
       <Hud snapshot={hud} onExit={onExit} onPause={handlePause} onResume={handleResume} />
+      {showTouch && inputState !== undefined && <TouchInput state={inputState} />}
+      {showPortrait && <PortraitOverlay />}
       {error !== undefined && (
         <p className={styles.error} role="alert">
           {error}

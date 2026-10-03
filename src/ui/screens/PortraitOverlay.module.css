@@ -1,0 +1,36 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgb(8 18 30 / 94%);
+}
+
+.card {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  max-width: 22rem;
+  text-align: center;
+}
+
+.icon {
+  transform: rotate(-90deg);
+}
+
+.title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ffe8b0;
+}
+
+.body {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #dce8f4;
+}

@@ -1,0 +1,97 @@
+/*
+ * The controls sit above the arena and must not swallow taps meant for the HUD, so the layer itself is
+ * transparent to pointers and only the controls take them.
+ */
+.controls {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.stick,
+.gun {
+  pointer-events: auto;
+}
+
+.stick {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+  border: 2px solid rgb(255 232 176 / 55%);
+  border-radius: 50%;
+  background: rgb(12 26 40 / 45%);
+  /* The browser must not scroll or zoom while a thumb is on the stick. */
+  touch-action: none;
+}
+
+.nub {
+  width: 3rem;
+  height: 3rem;
+  border: 2px solid rgb(74 50 24 / 70%);
+  border-radius: 50%;
+  background: url('/assets/png/ui/controls/button_round_normal.png') center / 100% 100% no-repeat;
+}
+
+.guns {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.gun {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  padding: 0;
+  border: 0;
+  background: url('/assets/png/ui/controls/button_round_normal.png') center / 100% 100% no-repeat;
+  touch-action: none;
+}
+
+.gun:active {
+  background-image: url('/assets/png/ui/controls/button_round_pressed.png');
+}
+
+.gun:focus-visible {
+  outline: 0.2rem solid #ffe8b0;
+  outline-offset: 0.2rem;
+}
+
+@media (max-height: 26rem) {
+  .stick {
+    bottom: 0.6rem;
+    left: 0.6rem;
+    width: 5.5rem;
+    height: 5.5rem;
+  }
+
+  .nub {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .guns {
+    right: 0.6rem;
+    bottom: 0.6rem;
+    gap: 0.5rem;
+  }
+
+  .gun {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .gun img {
+    width: 2rem;
+    height: 2rem;
+  }
+}

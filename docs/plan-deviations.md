@@ -144,6 +144,28 @@ Two while implementing M7:
   it, "the tabs refetch when they are shown again" would be an assumption about React Query rather than a
   measurement — the browser run shows the ranking counter going 2 → 3 on a tab switch.
 
+## J. Additions while implementing M13
+
+- **The touch controls are a stick plus three guns, not five buttons.** Plan §1.7 says "on-screen buttons";
+  a stick carries thrust and turn in one thumb (up ahead, sideways a turn, diagonal W+A) and the guns sit
+  under the right one. Multi-touch is the requirement that shaped it: steering and firing at once needs
+  two fingers, so the stick remembers its pointer and each gun handles its own.
+- **`?touch=1` forces the controls on.** A reviewer on a desktop needs to see and drive them; without it
+  the only way to check the touch path would be a real phone. The desktop run uses it to measure the
+  stick and the guns.
+- **The announcement is a pure function of the snapshot, not a timer.** "Time every 30 s and at 10 s"
+  becomes a bucketed string that is constant inside each stretch, so a polite live region speaks when a
+  bucket is crossed and stays quiet in between. No `setState` in an effect, no interval to leak — and
+  "avoid announcing every frame" holds by construction.
+- **Rotating back to landscape leaves the match paused.** The pause is automatic when the arena becomes
+  invisible; resuming is a button press. Making a rotation resume would be the device deciding when the
+  player is ready.
+- **Portrait is only "portrait" on a small screen.** A desktop window that happens to be taller than it
+  is wide is not a phone and gets no rotate notice, so the rule is orientation _and_ width.
+- **The touch writer is a named adapter.** Mutating the shared `InputState` from an event handler is the
+  design, but React's compiler rules are right to object to a component mutating what looks like a prop,
+  so the mutation lives behind `createTouchWriter` where it reads as what it is.
+
 ## I. Additions while implementing M12
 
 - **The registration flow is an explicit async routine, not a `useMutation`.** Plan §1.9 describes

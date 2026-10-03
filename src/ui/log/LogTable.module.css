@@ -107,3 +107,18 @@
   text-transform: uppercase;
   color: #cfe0f0;
 }
+
+@media (max-height: 34rem), (max-width: 48rem) {
+  .table {
+    font-size: 0.76rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.2rem 0.35rem;
+  }
+
+  .pager {
+    margin-top: 0.4rem;
+  }
+}

@@ -77,6 +77,15 @@ import {
   removePending,
 } from '../src/storage/pending.ts'
 import { markResultRegistered } from '../src/storage/lastResult.ts'
+import { AA_NORMAL_TEXT, contrastRatio } from '../src/ui/contrast.ts'
+import { announcementFor, timeAnnouncement } from '../src/ui/hud/announce.ts'
+import {
+  clampToRadius,
+  createTouchWriter,
+  portraitOverlayVisible,
+  stickIntentFor,
+  touchControlsVisible,
+} from '../src/game/input/touchIntent.ts'
 import { endReasonText, formatClock, pointsLabel, registrationText } from '../src/ui/format.ts'
 import {
   INITIAL_ALERTS,
@@ -2343,6 +2352,152 @@ section('pending registrations and the registration flow')
 
   clearPending()
   resetStorageBackend()
+}
+
+section('touch controls and spoken status')
+
+{
+  const NEUTRAL = { forward: false, rotateLeft: false, rotateRight: false }
+
+  check(
+    'the middle of the stick is still nothing',
+    JSON.stringify(stickIntentFor({ x: 0, y: 0 }, 56)) === JSON.stringify(NEUTRAL),
+  )
+  check(
+    'a stick with no radius cannot divide by zero',
+    JSON.stringify(stickIntentFor({ x: 40, y: -40 }, 0)) === JSON.stringify(NEUTRAL),
+  )
+
+  const up = stickIntentFor({ x: 0, y: -56 }, 56)
+  check('pushing the stick up sails ahead', up.forward && !up.rotateLeft && !up.rotateRight)
+  const upLeft = stickIntentFor({ x: -40, y: -40 }, 56)
+  check('up and to the left is forward and to port, like W+A', upLeft.forward && upLeft.rotateLeft)
+  const right = stickIntentFor({ x: 56, y: 0 }, 56)
+  check('pushing sideways turns without moving', !right.forward && right.rotateRight)
+  const down = stickIntentFor({ x: 0, y: 56 }, 56)
+  check(
+    'pushing down does nothing, because the ship has no reverse',
+    JSON.stringify(down) === JSON.stringify(NEUTRAL),
+  )
+  check(
+    'a nudge inside the dead zone is ignored',
+    JSON.stringify(stickIntentFor({ x: 4, y: -4 }, 56)) === JSON.stringify(NEUTRAL),
+  )
+
+  const clamped = clampToRadius({ x: 300, y: 0 }, 56)
+  check('the nub cannot leave its base', Math.round(Math.hypot(clamped.x, clamped.y)) === 56)
+  check('clamping keeps the direction', clamped.x > 0 && clamped.y === 0)
+  const inside = clampToRadius({ x: 10, y: -10 }, 56)
+  check('a nub inside the base is left alone', inside.x === 10 && inside.y === -10)
+
+  // The touch controls write into the very same object the keyboard writes into (plan §1.7).
+  const state = createInputState()
+  const writer = createTouchWriter(state)
+  writer.setStick({ forward: true, rotateLeft: false, rotateRight: true })
+  check(
+    'the stick writes the shared input state',
+    state.forward && state.rotateRight && !state.rotateLeft,
+  )
+  writer.setFire('fireLeft', true)
+  writer.setFire('fireFront', true)
+  check(
+    'a gun button writes the shared input state',
+    state.fireLeft && state.fireFront && !state.fireRight,
+  )
+  writer.release()
+  check(
+    'releasing clears every touch control',
+    !state.forward &&
+      !state.rotateLeft &&
+      !state.rotateRight &&
+      !state.fireLeft &&
+      !state.fireFront &&
+      !state.fireRight,
+  )
+
+  const desktop = { coarsePointer: false, portrait: false, width: 1440, touchForced: false }
+  const phone = { coarsePointer: true, portrait: false, width: 360, touchForced: false }
+  check('a mouse and a wide window get no touch controls', !touchControlsVisible(desktop))
+  check('a touch device gets them', touchControlsVisible(phone))
+  check(
+    'a short window gets them even with a mouse',
+    touchControlsVisible({ ...desktop, width: 800 }),
+  )
+  check(
+    'and `?touch=1` forces them anywhere',
+    touchControlsVisible({ ...desktop, touchForced: true }),
+  )
+  check(
+    'the rotate notice only appears on a narrow portrait screen',
+    !portraitOverlayVisible(phone) && portraitOverlayVisible({ ...phone, portrait: true }),
+  )
+  check(
+    'a wide portrait window is not a phone',
+    !portraitOverlayVisible({ ...desktop, portrait: true }),
+  )
+
+  // Announcements: constant within each stretch they describe, so a polite live region cannot chatter.
+  check(
+    'the time is spoken every thirty seconds, not every second',
+    timeAnnouncement(118) === timeAnnouncement(105) &&
+      timeAnnouncement(118) === timeAnnouncement(90),
+  )
+  check(
+    'and it changes when the next half-minute starts',
+    timeAnnouncement(90) !== timeAnnouncement(89),
+  )
+  check('whole minutes are said as minutes', timeAnnouncement(120) === '2 minutes left')
+  check(
+    'the ten second mark is called out',
+    timeAnnouncement(10) === 'Ten seconds left' && timeAnnouncement(3) === 'Ten seconds left',
+  )
+  check(
+    'the score is part of the announcement',
+    announcementFor({ score: 3, remainingSec: 100, paused: false }).startsWith('3 points'),
+  )
+  check(
+    'one point is not "1 points"',
+    announcementFor({ score: 1, remainingSec: 100, paused: false }).startsWith('1 point'),
+  )
+  check(
+    'pausing is announced',
+    announcementFor({ score: 0, remainingSec: 100, paused: true }).startsWith('Match paused'),
+  )
+  check(
+    'the announcement repeats nothing while the clock crosses a second',
+    announcementFor({ score: 4, remainingSec: 100, paused: false }) ===
+      announcementFor({ score: 4, remainingSec: 99, paused: false }),
+  )
+
+  // Contrast, computed from the colours actually in the stylesheets (plan M13 asks for AA).
+  const palette = [
+    ['menu title', '#ffe8b0', '#2c1a06'],
+    ['screen title', '#ffe8b0', '#241608'],
+    ['body text', '#cfe0f0', '#0c1a28'],
+    ['muted caption', '#9fb4c9', '#0c1a28'],
+    ['button label', '#4a3218', '#f2c169'],
+    ['table row', '#eaf2fa', '#10202f'],
+    ['error text', '#ffd0c4', '#2a1210'],
+  ] as const
+
+  for (const [name, foreground, background] of palette) {
+    const ratio = contrastRatio(foreground, background)
+    check(
+      `${name} clears WCAG AA (${foreground} on ${background})`,
+      ratio !== undefined && ratio >= AA_NORMAL_TEXT,
+      ratio === undefined ? 'unparseable colour' : `${ratio.toFixed(2)}:1`,
+    )
+  }
+
+  check(
+    'the ratio of a colour with itself is one',
+    Math.abs((contrastRatio('#ffffff', '#ffffff') ?? 0) - 1) < 0.001,
+  )
+  check(
+    'black on white is the maximum',
+    Math.abs((contrastRatio('#000000', '#ffffff') ?? 0) - 21) < 0.01,
+  )
+  check('a typo is refused rather than guessed', contrastRatio('#ff', '#ffffff') === undefined)
 }
 
 section('ship art orientation')

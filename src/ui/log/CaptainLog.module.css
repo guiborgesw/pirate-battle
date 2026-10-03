@@ -78,3 +78,27 @@
   justify-content: center;
   width: 100%;
 }
+
+@media (max-height: 34rem), (max-width: 48rem) {
+  .board {
+    min-height: 96dvh;
+    gap: 0.25rem;
+    padding: 1.2rem 1.2rem 1.7rem;
+  }
+
+  .title {
+    font-size: 1.35rem;
+  }
+
+  .tab,
+  .tabActive {
+    min-width: 8.5rem;
+    min-height: 2rem;
+    font-size: 0.75rem;
+  }
+
+  .subtitle {
+    margin-bottom: 0.25rem;
+    font-size: 0.62rem;
+  }
+}

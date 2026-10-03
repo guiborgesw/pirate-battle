@@ -12,6 +12,7 @@ const REASON_TEXT: Record<PauseReason, string> = {
   user: 'You paused the match.',
   blur: 'The window lost focus, so the match paused automatically.',
   hidden: 'The tab was hidden, so the match paused automatically.',
+  orientation: 'The device was turned upright, so the match paused automatically.',
   auto: 'The match paused automatically.',
 }
 

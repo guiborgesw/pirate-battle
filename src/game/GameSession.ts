@@ -54,7 +54,7 @@ export const MAX_FRAME_MS = 250
 
 export type EndReason = 'time' | 'death'
 export type SessionStatus = 'running' | 'paused' | 'ended'
-export type PauseReason = 'user' | 'blur' | 'hidden' | 'auto'
+export type PauseReason = 'user' | 'blur' | 'hidden' | 'auto' | 'orientation'
 
 /** What the result screen needs from a finished match. */
 export type MatchOutcome = {
@@ -532,6 +532,14 @@ export class GameSession {
 
   getPauseReason(): PauseReason | undefined {
     return this.pauseReason
+  }
+
+  /**
+   * The mutable input state every device writes into. Handed to the touch overlay so a thumb and a
+   * keyboard drive the same ship without the simulation knowing the difference (plan §1.7).
+   */
+  getInputState(): InputState {
+    return this.input
   }
 
   /** Audio health for the acceptance check: what played, what was dropped, which loops are running. */

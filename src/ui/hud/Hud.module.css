@@ -177,3 +177,32 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Small landscape screens (a 640x360 phone and up): the same numbers with less chrome around them, so
+   the band never runs out of room for the hull, the score and the clock. */
+@media (max-width: 60rem), (max-height: 30rem) {
+  .hud {
+    inset: 0.4rem 0.4rem auto;
+    gap: 0.5rem;
+  }
+
+  .group {
+    gap: 0.35rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.85rem;
+  }
+
+  .icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .hpTrack {
+    width: 4.5rem;
+    height: 0.7rem;
+  }
+
+  .value {
+    min-width: 1.9rem;
+  }
+}
