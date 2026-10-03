@@ -5,6 +5,14 @@ A top-down 2D naval shooter built with **React + TypeScript + PixiJS** for the
 
 Sail between islands, fight Chaser and Shooter ships and stack up points before the timer runs out.
 
+**▶ Live demo: [pirate-battle-beta.vercel.app](https://pirate-battle-beta.vercel.app)** — nothing to
+install and no login. The deployed build runs against a mock API with a seeded dataset, so the ranking
+and match history tabs have something in them.
+
+| Menu                                               | Arena                                                     |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| ![The main menu](docs/reference/deployed-menu.png) | ![A match in progress](docs/reference/deployed-arena.png) |
+
 > **Status:** M1–M14 are complete: scaffold and toolchain, typed config and storage, asset pipeline, the
 > Pixi host on a fixed-step loop, the player sailing an arena with islands and collisions, three gun
 > mounts firing pooled cannonballs, both enemy types hunting the player with health bars and scoring,
@@ -13,9 +21,9 @@ Sail between islands, fight Chaser and Shooter ships and stack up points before 
 > registered once each — queued locally before the request, retried after a failure, and recovered after
 > a reload without ever duplicating — touch controls, a portrait notice, a responsive HUD and an
 > accessibility pass that a real axe scan comes back clean on, and an end-to-end Playwright suite with
-> visual baselines. Performance evidence and the deploy arrive with M15/M16; the milestone map is in
-> [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded in
-> [`docs/plan-deviations.md`](docs/plan-deviations.md).
+> visual baselines. The build is deployed (link above); performance evidence arrives with M15. The
+> milestone map is in [`docs/plan.md`](docs/plan.md) and every deliberate deviation from it is recorded
+> in [`docs/plan-deviations.md`](docs/plan-deviations.md).
 
 ## Requirements
 
